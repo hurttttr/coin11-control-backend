@@ -2,13 +2,13 @@
 Scrcpy streaming: send_frame_meta=true, parse complete H.264 frames.
 
 Root cause of black screen:
-  send_frame_meta=false → raw H.264 Annex B byte stream over ADB forward tunnel.
-  TCP is a stream protocol — recv() returns arbitrary byte boundaries.
+  send_frame_meta=false -> raw H.264 Annex B byte stream over ADB forward tunnel.
+  TCP is a stream protocol -- recv() returns arbitrary byte boundaries.
   Backend forwarded arbitrary-sized chunks (262144 bytes each) to WebSocket.
-  Frontend VideoDecoder.decode() received truncated NAL units → no output → black.
+  Frontend VideoDecoder.decode() received truncated NAL units -> no output -> black.
 
 Fix:
-  send_frame_meta=true → scrcpy-server prefixes each frame with 12B meta header:
+  send_frame_meta=true -> scrcpy-server prefixes each frame with 12B meta header:
     [8B PTS (uint64 BE)] [4B frame_size (uint32 BE)] [frame_size bytes H.264 data]
   Backend reads meta header, parses frame_size, reads exact frame, forwards it
   as a single WebSocket binary message. Each WS message = one complete H.264 AU.
@@ -31,8 +31,8 @@ _JAR_DIR = Path(__file__).resolve().parent.parent / "binaries"
 _JAR_V2 = _JAR_DIR / "scrcpy-server-v2.7.jar"
 
 # Scrcpy wire protocol (send_frame_meta=true):
-#   frame_meta = struct.pack('>QI', pts, frame_size)  → 12 bytes
-#   frame_data = raw H.264 Annex B byte stream          → frame_size bytes
+#   frame_meta = struct.pack('>QI', pts, frame_size)  -> 12 bytes
+#   frame_data = raw H.264 Annex B byte stream          -> frame_size bytes
 _FRAME_META_STRUCT = struct.Struct(">QI")   # PTS(8) + size(4) = 12
 
 
@@ -51,7 +51,7 @@ def _recv_exact(sock: socket.socket, n: int) -> bytes:
 
 
 class ScrcpySession:
-    """Scrcpy session — reads complete H.264 frames via 12B meta headers."""
+    """Scrcpy session -- reads complete H.264 frames via 12B meta headers."""
 
     def __init__(self, serial: str):
         self.serial = serial
@@ -87,13 +87,14 @@ class ScrcpySession:
         )
 
         # Start scrcpy-server with send_frame_meta=true
+        # tunnel_forward=false: uses abstract sockets (scrcpy / scrcpy_control)
         cmd = " ".join([
             "CLASSPATH=/data/local/tmp/scrcpy_server.jar",
             "app_process", "/", "com.genymobile.scrcpy.Server", "2.7",
             "log_level=info", "max_size=1280", "max_fps=30",
             "video_bit_rate=4000000",
-            "tunnel_forward=true",
-            "send_frame_meta=true",          # ← CRITICAL: adds 12B meta per frame
+            "tunnel_forward=false",
+            "send_frame_meta=true",          # <- CRITICAL: adds 12B meta per frame
             "control=true",
             "audio=false", "show_touches=false", "stay_awake=false",
             "power_off_on_close=false", "clipboard_autosync=false",
@@ -103,9 +104,9 @@ class ScrcpySession:
         )
         await asyncio.sleep(2.0)
 
-        # Connect video & control abstract sockets
-        self._vs = await self._connect()
-        self._cs = await self._connect()
+        # Connect video (scrcpy) & control (scrcpy_control) abstract sockets
+        self._vs = await self._connect("scrcpy")
+        self._cs = await self._connect("scrcpy_control")
 
         # Read preamble: [dummy:1][device_name:64][codec_info:4][width:4][height:4]
         def _preamble():
@@ -167,7 +168,7 @@ class ScrcpySession:
 
     # ---- Internal helpers ---------------------------------------------------
 
-    async def _connect(self) -> socket.socket:
+    async def _connect(self, abstract_name: str = "scrcpy") -> socket.socket:
         """Retry ADB abstract socket connection to scrcpy."""
         import retry
         from adbutils import AdbError
@@ -176,7 +177,7 @@ class ScrcpySession:
             @retry.retry(exceptions=AdbError, tries=30, delay=0.1)
             def _inner():
                 return self._dev.create_connection(
-                    adbutils.Network.LOCAL_ABSTRACT, "scrcpy",
+                    adbutils.Network.LOCAL_ABSTRACT, abstract_name,
                 )
             return _inner()
 
@@ -288,7 +289,7 @@ class ScrcpySession:
 
 
 # ======================================================================
-# ScrcpyService — session lifecycle management
+# ScrcpyService -- session lifecycle management
 # ======================================================================
 
 class ScrcpyService:
