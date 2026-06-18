@@ -2,7 +2,6 @@
 Coin11-TB Control API — FastAPI 应用入口
 """
 import asyncio
-import json
 import logging
 import os
 import subprocess as _subprocess
@@ -23,7 +22,6 @@ from app.core.config import get_settings
 from app.services.websocket_manager import ws_manager
 from app.services.screen_capture import screen_capture
 from app.services.task_engine import task_engine
-from app.services.scrcpy_service import scrcpy_service
 
 settings = get_settings()
 
@@ -67,10 +65,9 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # 关闭时: 清理所有截图流 和 scrcpy 会话
+    # 关闭时: 清理所有截图流
     for serial in list(screen_capture.active_streams):
         await screen_capture.stop_stream(serial)
-    await scrcpy_service.close_all()
     print("Coin11-TB Control API 正在关闭...")
     print("资源已清理")
 
@@ -159,54 +156,7 @@ async def device_websocket(websocket: WebSocket, device_id: str, token: str = Qu
             await ws_manager.broadcast(device_id, "screencast", "stopped")
 
 
-# ---------- Scrcpy WebSocket 端点 ----------
-
-
-@app.websocket("/ws/scrcpy/{serial}")
-async def scrcpy_websocket(websocket: WebSocket, serial: str, token: str = Query(default="coin11-control-token")):
-    """
-    Scrcpy 实时画面与控制 WebSocket 端点
-    - 二进制帧: H.264 视频数据
-    - 文本帧: JSON 控制指令 (touchDown/touchUp/touchMove/keyEvent/text)
-    - 返回: JSON 元数据 (scrcpy_meta) + H.264 二进制帧
-    """
-    if token != settings.WS_AUTH_TOKEN:
-        await websocket.close(code=4001, reason="Unauthorized")
-        return
-
-    await websocket.accept()
-
-    session = None
-    try:
-        session = await scrcpy_service.get_or_create_session(serial)
-        await session.stream_to_websocket(websocket)
-    except RuntimeError as e:
-        logger.error("[Scrcpy WS] Runtime error for %s: %s", serial, e)
-        try:
-            await websocket.send_text(
-                json.dumps({"type": "error", "data": str(e)})
-            )
-        except Exception:
-            pass
-    except FileNotFoundError as e:
-        logger.error("[Scrcpy WS] File not found: %s", e)
-        try:
-            await websocket.send_text(
-                json.dumps({"type": "error", "data": f"scrcpy 服务端缺失: {e}"})
-            )
-        except Exception:
-            pass
-    except Exception as e:
-        logger.error("[Scrcpy WS] Unexpected error for %s: %s", serial, e)
-        try:
-            await websocket.send_text(
-                json.dumps({"type": "error", "data": str(e)})
-            )
-        except Exception:
-            pass
-    finally:
-        if session:
-            await scrcpy_service.close_session(serial)
+# ---------- Health Check ----------
 
 
 @app.get("/api/health")

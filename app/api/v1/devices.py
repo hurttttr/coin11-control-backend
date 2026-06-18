@@ -9,7 +9,6 @@ from app.schemas.device import (
 from app.services.device_manager import device_manager
 from app.services.screen_capture import screen_capture
 from app.services.task_engine import task_engine
-from app.services.scrcpy_service import scrcpy_service
 
 router = APIRouter(prefix="/devices", tags=["devices"])
 
@@ -63,15 +62,3 @@ async def get_screenshot(serial: str):
 async def get_device_queue(serial: str):
     """获取设备任务队列"""
     return await task_engine.get_queue(serial)
-
-
-@router.get("/{serial}/scrcpy")
-async def get_scrcpy_status(serial: str):
-    """获取设备的 Scrcpy 会话状态"""
-    sessions = scrcpy_service.list_active_sessions()
-    session = next((s for s in sessions if s["serial"] == serial), None)
-    return {
-        "available": True,
-        "active": session is not None,
-        "session": session,
-    }
