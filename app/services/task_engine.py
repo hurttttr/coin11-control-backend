@@ -65,7 +65,7 @@ class TaskEngine:
         扫描原项目目录下的 .py 脚本文件
         排除 utils.py, chromedriver.py, 识别图片测试.py
         """
-        path = self.settings.COIN11_TB_PATH
+        path = self.settings.coin11_tb_path_resolved
         scripts = []
         if os.path.isdir(path):
             for f in sorted(os.listdir(path)):
@@ -90,7 +90,7 @@ class TaskEngine:
 
         # 2. 使用 basename 防止路径穿越
         safe_name = os.path.basename(script_name)
-        script_path = os.path.join(self.settings.COIN11_TB_PATH, safe_name)
+        script_path = os.path.join(self.settings.coin11_tb_path_resolved, safe_name)
         task = Task(device_id, safe_name, script_path)
         task.position = len(self._queues[device_id])
         self._queues[device_id].append(task)
@@ -183,7 +183,7 @@ class TaskEngine:
                         """在子线程中运行脚本并逐行捕获输出"""
                         process = subprocess.Popen(
                             [sys.executable, task.script_path],
-                            cwd=self.settings.COIN11_TB_PATH,
+                            cwd=self.settings.coin11_tb_path_resolved,
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
                             env={**os.environ, "PYTHONUNBUFFERED": "1", "COIN11_TB_DEVICE_SERIAL": device_id},

@@ -273,8 +273,11 @@ ws://127.0.0.1:8000/ws/device/{device_id}?token={token}
 通过项目根目录的 `.env` 文件配置（参考 `app/core/config.py`）：
 
 ```ini
-# coin11-tb 原项目路径（相对于服务的工作目录）
-COIN11_TB_PATH=D:\lenovo\Documents\Code\coin11-tb
+# coin11-tb 远程仓库地址（启动时自动 clone 到 coin11_tb/）
+COIN11_TB_REPO_URL=https://github.com/czl0325/coin11-tb.git
+
+# 自定义 coin11-tb 路径（可选，留空则使用内置 coin11_tb/）
+# COIN11_TB_PATH=D:\path\to\custom\coin11-tb
 
 # ADB 可执行文件路径（默认使用 PATH 中的 adb）
 ADB_PATH=adb
@@ -299,7 +302,7 @@ DEEPSEEK_API_KEY=
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
-| `COIN11_TB_PATH` | `D:\...\coin11-tb` | 自动化脚本仓库所在路径。服务默认使用内嵌的 `app/coin11_tb/` 目录 |
+| `COIN11_TB_REPO_URL` | `https://github.com/czl0325/coin11-tb.git` | coin11-tb 远程仓库地址，启动时自动 clone/更新到 `coin11_tb/` |
 | `ADB_PATH` | `adb` | ADB 可执行文件路径。留空则从系统 PATH 查找 |
 | `HOST` | `127.0.0.1` | 监听地址。生产环境可改为 `0.0.0.0` |
 | `PORT` | `8000` | 监听端口 |
@@ -355,11 +358,12 @@ DEEPSEEK_API_KEY=
 
 ### 版本管理
 
-如果 `COIN11_TB_PATH` 指向的是一个 Git 仓库，服务会：
+服务在项目根目录的 `coin11_tb/` 内置了 coin11-tb 仓库：
 
-1. 启动时检查 Git 仓库是否存在
-2. 通过 API 可以触发 `git fetch` 检查远程是否有新 commit
-3. 通过 API 可以执行 `git pull` 拉取最新脚本
+1. **启动时**：自动 clone（如果不存在）或检查仓库完整性
+2. **更新检查**：通过 API `GET /api/update/check` 检查远程是否有新 commit
+3. **拉取更新**：通过 API `POST /api/update/pull` 拉取最新脚本
+4. **仓库状态**：通过 API `GET /api/update/repo-status` 查看仓库状态
 
 ---
 

@@ -19,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import router as v1_router
 from app.core.config import get_settings
+from app.services.repo_manager import RepoManager, repo_manager as global_repo_manager
 from app.services.websocket_manager import ws_manager
 from app.services.screen_capture import screen_capture
 from app.services.task_engine import task_engine
@@ -32,36 +33,38 @@ async def lifespan(app: FastAPI):
     # 启动时
     print("=" * 50)
     print("  Coin11-TB Control API 启动中...")
-    print(f"  原项目路径: {settings.COIN11_TB_PATH}")
+    print(f"  内置路径: {settings.coin11_tb_path_resolved}")
     print(f"  ADB 路径: {settings.ADB_PATH}")
     print(f"  监听地址: {settings.HOST}:{settings.PORT}")
     print("=" * 50)
 
     # 检查 ADB 是否可用
     adb_available = await _check_adb()
-    coin11_path_exists = os.path.isdir(settings.COIN11_TB_PATH)
 
     if not adb_available:
         print(f"  [WARN] ADB 未找到 — 设备管理功能将不可用")
     else:
         print(f"  [OK] ADB 可用")
 
-    if not coin11_path_exists:
-        print(f"  [WARN] 原项目路径不存在: {settings.COIN11_TB_PATH}")
-    else:
-        print(f"  [OK] 原项目路径存在")
+    # 初始化 RepoManager 并自动 clone/更新 coin11-tb 仓库
+    import app.services.repo_manager as rm
 
-    # 检查 Git 仓库
-    git_dir = os.path.join(settings.COIN11_TB_PATH, ".git")
-    if not os.path.isdir(git_dir):
-        print(f"  [WARN] 原项目不是 Git 仓库 — 版本更新功能将不可用")
+    coin11_tb_path = settings.coin11_tb_path_resolved
+    repo_mgr = RepoManager(coin11_tb_path, settings.COIN11_TB_REPO_URL)
+    rm.repo_manager = repo_mgr
+
+    clone_ok = await repo_mgr.ensure_repo()
+    if clone_ok:
+        print(f"  [OK] coin11-tb 仓库就绪: {coin11_tb_path}")
+    else:
+        print(f"  [WARN] coin11-tb 仓库初始化失败: {repo_mgr.error_msg}")
 
     print(f"  [OK] Coin11-TB Control API 已启动")
     print("=" * 50)
 
     # 将检查结果存入 app.state
     app.state.adb_available = adb_available
-    app.state.coin11_path_exists = coin11_path_exists
+    app.state.coin11_tb_ready = clone_ok
 
     yield
 
@@ -165,7 +168,7 @@ async def health_check():
     return {
         "status": "ok",
         "adb_available": getattr(app.state, "adb_available", False),
-        "coin11_path_exists": getattr(app.state, "coin11_path_exists", False),
+        "coin11_tb_ready": getattr(app.state, "coin11_tb_ready", False),
     }
 
 

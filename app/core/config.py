@@ -1,4 +1,5 @@
 import json
+import os
 from functools import lru_cache
 from typing import Optional
 
@@ -8,8 +9,10 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     """应用配置，从 .env 文件加载"""
 
-    # coin11-tb 原项目路径
-    COIN11_TB_PATH: str = "D:\\lenovo\\Documents\\Code\\coin11-tb"
+    # coin11-tb 内置路径（空字符串表示使用默认内置路径）
+    COIN11_TB_PATH: str = ""
+    # coin11-tb 远程仓库地址
+    COIN11_TB_REPO_URL: str = "https://github.com/czl0325/coin11-tb.git"
 
     # ADB 可执行文件路径
     ADB_PATH: str = "adb"
@@ -38,6 +41,19 @@ class Settings(BaseSettings):
         # 允许 CORS_ORIGINS 从 JSON 字符串解析
         "extra": "ignore",
     }
+
+    @property
+    def coin11_tb_path_resolved(self) -> str:
+        """获取 coin11-tb 绝对路径
+
+        如果 COIN11_TB_PATH 非空，直接使用该值；
+        否则使用后端项目根目录下的 coin11_tb/ 内置路径
+        """
+        if self.COIN11_TB_PATH:
+            return self.COIN11_TB_PATH
+        # 默认：后端项目根目录下的 coin11_tb/
+        backend_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        return os.path.join(backend_root, "coin11_tb")
 
     @classmethod
     def parse_cors_origins(cls, v: str) -> list[str]:

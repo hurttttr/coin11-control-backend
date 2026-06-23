@@ -27,3 +27,16 @@ async def pull_update():
     """拉取原项目更新"""
     result = await version_manager.pull_update()
     return result
+
+
+@router.get("/repo-status")
+async def get_repo_status():
+    """获取 coin11-tb 仓库状态"""
+    from app.services.repo_manager import repo_manager
+    if repo_manager is None:
+        return {"status": "unknown", "error": "RepoManager 未初始化"}
+    return {
+        "status": repo_manager.status,
+        "error": repo_manager.error_msg,
+        "path": repo_manager.repo_path,
+    }

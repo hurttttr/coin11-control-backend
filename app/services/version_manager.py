@@ -39,7 +39,7 @@ class VersionManager:
 
     def __init__(self):
         self.settings = get_settings()
-        self._repo_path = self.settings.COIN11_TB_PATH
+        self._repo_path = self.settings.coin11_tb_path_resolved
         self._last_check: Optional[UpdateCheckResult] = None
 
     async def _run_git(self, *args, timeout: int = 30) -> tuple[str, str, int]:
