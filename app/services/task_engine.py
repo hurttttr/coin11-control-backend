@@ -7,6 +7,7 @@
 import asyncio
 import os
 import subprocess
+import sys
 import uuid
 from collections import defaultdict
 from datetime import datetime
@@ -181,11 +182,11 @@ class TaskEngine:
                     def _run_script():
                         """在子线程中运行脚本并逐行捕获输出"""
                         process = subprocess.Popen(
-                            ["python", task.script_path],
+                            [sys.executable, task.script_path],
                             cwd=self.settings.COIN11_TB_PATH,
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
-                            env={**os.environ, "PYTHONUNBUFFERED": "1"},
+                            env={**os.environ, "PYTHONUNBUFFERED": "1", "COIN11_TB_DEVICE_SERIAL": device_id},
                             text=True,
                             bufsize=1,  # 行缓冲
                         )

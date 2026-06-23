@@ -61,11 +61,11 @@ class ConnectionManager:
         await self.broadcast(device_id, "screenshot", b64)
 
     async def send_log(self, device_id: str, text: str, task_id: str = "") -> None:
-        """推送日志行"""
+        """推送日志行（纯文本，避免双重 JSON 编码）"""
         await self.broadcast(
             device_id,
             "log",
-            json.dumps({"text": text, "task_id": task_id}),
+            text,
         )
 
     async def send_status(

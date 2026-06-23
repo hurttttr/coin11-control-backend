@@ -58,12 +58,11 @@ class DeviceManager:
             if match:
                 serial = match.group(1)
                 detail = match.group(2)
-                # 过滤 ADB TLS 握手伪设备：没有 model/device 信息的才是假的
-                # 真设备即使 serial 含 adb- 前缀，也会有 model:xxx 信息
+                # 过滤 ADB TLS 服务发现名称（如 adb-xxx._adb-tls-connect._tcp），
+                # 但保留已有 model/product/device 信息的已连接设备
                 has_model = "model:" in detail or "product:" in detail or "device:" in detail
                 if ("_adb-tls-connect" in serial or serial.startswith("adb-")) and not has_model:
                     continue
-                model_match = re.search(r'model:(\S+)', detail)
                 model_match = re.search(r'model:(\S+)', detail)
                 model = model_match.group(1) if model_match else "Unknown"
                 # 通过 serial 判断连接类型: 包含 :port 则为 wifi

@@ -52,6 +52,14 @@ async def start_queue(device_id: str):
     启动队列执行
     自动集成 WebSocket 日志推送、状态推送和截图流
     """
+    # 确保截图流正在运行（防止被 stop_queue 或意外中断后未恢复）
+    if device_id not in screen_capture.active_streams:
+        await screen_capture.start_stream(
+            device_id,
+            callback=lambda img: ws_manager.send_screenshot(device_id, img),
+            fps=2.0,
+        )
+
     # 构建回调闭包
     async def log_callback(did: str, tid: str, text: str):
         await ws_manager.send_log(did, text, task_id=tid)
@@ -74,8 +82,6 @@ async def start_queue(device_id: str):
 async def stop_queue(device_id: str):
     """停止队列执行"""
     await task_engine.stop_queue(device_id)
-    # 同时停止截图流
-    await screen_capture.stop_stream(device_id)
     return {"success": True, "message": "队列已停止"}
 
 

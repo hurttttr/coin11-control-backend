@@ -80,6 +80,7 @@ class ScreenCapture:
 
     async def stop_stream(self, serial: str) -> None:
         """停止截图流"""
+        self._active_serials.discard(serial)
         task = self._stream_tasks.pop(serial, None)
         if task is not None:
             task.cancel()
