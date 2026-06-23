@@ -1,6 +1,9 @@
 # Coin11 Control Backend 🚀
 
-**coin11-control-backend** 是一个基于 **FastAPI** 构建的 Web 后端服务，用于集中控制和监视多台安卓设备，自动执行 **淘宝**、**支付宝**、**闲鱼** 等平台的签到、任务脚本。通过 **ADB** 管理设备连接，通过 **WebSocket** 实时推送日志和屏幕截图，并提供 RESTful API 进行任务队列编排与版本管理。
+**coin11-control-backend** 是一个基于 **FastAPI** 构建的 Web 后端服务，用于集中控制和监视多台安卓设备，自动执行 **淘宝**、**支付宝**、**闲鱼** 等平台的签到、任务脚本。
+
+> 本项目基于 [coin11-tb](https://github.com/czl0325/coin11-tb) 二次开发，后者提供了淘宝/支付宝/闲鱼等平台的自动化脚本。  
+> 配套前端项目：[coin11-control-frontend](https://github.com/hurttttr/coin11-control-frontend)
 
 ---
 
@@ -51,6 +54,36 @@
 | **ADB** (Android Debug Bridge) | 设备通信必需，需在 `PATH` 中或通过 `.env` 指定路径 |
 | **Git** | 版本更新功能可选依赖 |
 | **coin11-tb 项目** | 已嵌入 `app/coin11_tb/` 目录，或通过 `.env` 配置外部路径 |
+
+### ADB 安装指南
+
+ADB (Android Debug Bridge) 是设备通信的核心依赖，请根据您的操作系统安装：
+
+**Windows：**
+1. 下载 [Platform Tools](https://dl.google.com/android/repository/platform-tools-latest-windows.zip) 并解压到 `C:\path\to\platform-tools`其他位置自行替换下方路径
+2. 将解压后的 `platform-tools` 目录添加到系统 PATH，或在 `.env` 中配置 `ADB_PATH=C:\path\to\platform-tools\adb.exe`
+3. 打开 CMD 运行 `adb devices` 确认安装成功
+
+**macOS：**
+```bash
+brew install android-platform-tools
+```
+
+**Linux：**
+```bash
+# Ubuntu/Debian
+sudo apt install android-tools-adb
+# 或手动下载
+wget -q https://dl.google.com/android/repository/platform-tools-latest-linux.zip
+unzip platform-tools-latest-linux.zip
+sudo cp platform-tools/adb /usr/local/bin/
+```
+
+**验证安装：**
+```bash
+adb version
+# 应输出类似：Android Debug Bridge version 1.0.41
+```
 
 ### 安装步骤
 

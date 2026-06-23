@@ -3,8 +3,6 @@ Coin11-TB Control API — FastAPI 应用入口
 """
 import asyncio
 import logging
-import os
-import subprocess as _subprocess
 import sys
 from contextlib import asynccontextmanager
 
@@ -23,7 +21,6 @@ from app.services.repo_manager import RepoManager, repo_manager as global_repo_m
 from app.services.websocket_manager import ws_manager
 from app.services.screen_capture import screen_capture
 from app.services.task_engine import task_engine
-
 settings = get_settings()
 
 
@@ -39,12 +36,18 @@ async def lifespan(app: FastAPI):
     print("=" * 50)
 
     # 检查 ADB 是否可用
-    adb_available = await _check_adb()
-
-    if not adb_available:
-        print(f"  [WARN] ADB 未找到 — 设备管理功能将不可用")
+    def check_adb():
+        import subprocess as sp
+        try:
+            r = sp.run([settings.ADB_PATH, "version"], capture_output=True, text=True, timeout=5)
+            return "Android Debug Bridge" in r.stdout
+        except:
+            return False
+    adb_ok = await asyncio.to_thread(check_adb)
+    if adb_ok:
+        print(f"  [OK] ADB 可用: {settings.ADB_PATH}")
     else:
-        print(f"  [OK] ADB 可用")
+        print(f"  [WARN] ADB 未找到 — 设备管理功能将不可用")
 
     # 初始化 RepoManager 并自动 clone/更新 coin11-tb 仓库
     import app.services.repo_manager as rm
@@ -63,7 +66,7 @@ async def lifespan(app: FastAPI):
     print("=" * 50)
 
     # 将检查结果存入 app.state
-    app.state.adb_available = adb_available
+    app.state.adb_available = adb_ok
     app.state.coin11_tb_ready = clone_ok
 
     yield
@@ -170,20 +173,6 @@ async def health_check():
         "adb_available": getattr(app.state, "adb_available", False),
         "coin11_tb_ready": getattr(app.state, "coin11_tb_ready", False),
     }
-
-
-async def _check_adb() -> bool:
-    """检查 ADB 是否在 PATH 中可用"""
-    try:
-        result = await asyncio.to_thread(
-            _subprocess.run,
-            [settings.ADB_PATH, "version"],
-            capture_output=True,
-            timeout=5.0,
-        )
-        return b"Android Debug Bridge" in result.stdout
-    except (FileNotFoundError, _subprocess.TimeoutExpired, Exception):
-        return False
 
 
 if __name__ == "__main__":

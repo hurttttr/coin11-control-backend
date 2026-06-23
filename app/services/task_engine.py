@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import AsyncIterator, Callable, Coroutine, Optional
 
 from app.core.config import get_settings
+from app.services.device_selector_patch import create_launcher_script, cleanup_launcher
 
 
 class Task:
@@ -129,7 +130,13 @@ class TaskEngine:
 
     async def get_queue(self, device_id: str) -> list[dict]:
         """获取设备队列状态"""
-        return [t.to_dict() for t in self._queues[device_id]]
+        q = self._queues.get(device_id)
+        if q is None:
+            print(f"[DEBUG get_queue] device_id={device_id!r} -> key not in _queues (defaultdict would create empty)")
+            return []
+        result = [t.to_dict() for t in q]
+        print(f"[DEBUG get_queue] device_id={device_id!r} -> {len(q)} tasks, returning {len(result)} items")
+        return result
 
     # ---------- 队列执行 ----------
 
@@ -149,96 +156,143 @@ class TaskEngine:
             return False  # 已在运行
 
         async def runner():
-            # 复制队列（取快照），防止并发修改导致迭代异常
-            queue = list(self._queues[device_id])
-            for task in queue:
-                if task.status not in ("pending", "failed"):
-                    continue
+            """后台执行器 — 遍历队列快照，逐个执行任务"""
+            try:
+                qlist = self._queues.get(device_id)
+                if qlist is None:
+                    print(f"[DEBUG runner] _queues 中没有 device_id={device_id!r} 的键，队列为空")
+                    self._current_task[device_id] = None
+                    self._running[device_id] = None
+                    return
+                print(f"[DEBUG runner] 开始, device={device_id!r}, queue len={len(qlist)}, list_id=0x{id(qlist):x}")
+                # 复制队列（取快照），防止并发修改导致迭代异常
+                queue = list(qlist)
+                print(f"[DEBUG runner] 快照长度={len(queue)}")
 
-                # 标记运行中
-                task.status = "running"
-                task.started_at = datetime.now().isoformat()
-                self._current_task[device_id] = task
-                if status_callback:
+                for task in queue:
+                    print(f"[DEBUG runner] 处理任务 {task.id} status={task.status}")
+                    if task.status not in ("pending", "failed"):
+                        print(f"[DEBUG runner] 跳过任务 {task.id} status={task.status}")
+                        continue
+
+                    # 标记运行中
+                    task.status = "running"
+                    task.started_at = datetime.now().isoformat()
+                    self._current_task[device_id] = task
+                    print(f"[DEBUG runner] 任务 {task.id} 已标记为 running")
+                    if status_callback:
+                        try:
+                            await status_callback(device_id, task.id, "running")
+                        except Exception:
+                            pass
+
+                    # 检查脚本是否存在
+                    if not os.path.isfile(task.script_path):
+                        print(f"[DEBUG runner] 任务 {task.id} 脚本不存在: {task.script_path}")
+                        task.log_lines.append(f"[错误] 脚本文件不存在: {task.script_path}")
+                        task.status = "failed"
+                        task.finished_at = datetime.now().isoformat()
+                        if status_callback:
+                            try:
+                                await status_callback(device_id, task.id, "failed")
+                            except Exception:
+                                pass
+                        continue
+
+                    # 执行脚本
+                    launcher_path = None
                     try:
-                        await status_callback(device_id, task.id, "running")
-                    except Exception:
-                        pass
+                        def _run_script():
+                            """在子线程中运行脚本并逐行捕获输出"""
+                            nonlocal launcher_path
+                            # ---- debug: 记录子进程启动参数 ----
+                            debug_info = (
+                                f"[debug] sys.executable={sys.executable!r}\n"
+                                f"[debug] coin11_tb_dir={self.settings.coin11_tb_path_resolved!r}\n"
+                                f"[debug] target_script={task.script_path!r}\n"
+                                f"[debug] device_serial={device_id!r}"
+                            )
+                            task.log_lines.append(debug_info)
+                            # ---------------------------------
+                            launcher_path = create_launcher_script(
+                                coin11_tb_dir=self.settings.coin11_tb_path_resolved,
+                                target_script=task.script_path,
+                            )
+                            process = subprocess.Popen(
+                                [sys.executable, launcher_path],
+                                cwd=self.settings.coin11_tb_path_resolved,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE,
+                                stdin=subprocess.DEVNULL,
+                                env={**os.environ, "PYTHONUNBUFFERED": "1", "COIN11_TB_DEVICE_SERIAL": device_id},
+                                text=True,
+                                bufsize=1,  # 行缓冲
+                            )
+                            return process
 
-                # 检查脚本是否存在
-                if not os.path.isfile(task.script_path):
-                    task.log_lines.append(f"[错误] 脚本文件不存在: {task.script_path}")
-                    task.status = "failed"
+                        process = await asyncio.to_thread(_run_script)
+
+                        # 确保 process.stdout/err 已正确创建
+                        if process.stdout is None or process.stderr is None:
+                            raise RuntimeError(
+                                f"子进程 stdout={process.stdout is not None}, stderr={process.stderr is not None} — PIPE 创建失败"
+                            )
+
+                        async def read_stream(
+                            stream,  # IO[str] from subprocess.PIPE
+                            prefix: str = "",
+                        ) -> None:
+                            loop = asyncio.get_running_loop()
+                            while True:
+                                line = await loop.run_in_executor(
+                                    None, stream.readline
+                                )
+                                if not line:
+                                    break
+                                text = line.rstrip("\r\n")
+                                if text:
+                                    task.log_lines.append(text)
+                                    if log_callback:
+                                        try:
+                                            await log_callback(device_id, task.id, text)
+                                        except Exception:
+                                            pass
+
+                        await asyncio.gather(
+                            read_stream(process.stdout),
+                            read_stream(process.stderr),
+                        )
+                        returncode = await asyncio.to_thread(process.wait)
+                        task.status = "completed" if returncode == 0 else "failed"
+
+                        if returncode != 0:
+                            task.log_lines.append(
+                                f"[系统] 进程退出码: {returncode}"
+                            )
+
+                    except asyncio.CancelledError:
+                        task.log_lines.append("[系统] 任务被手动取消")
+                        task.status = "failed"
+                    except Exception as e:
+                        import traceback
+                        tb = traceback.format_exc()
+                        task.log_lines.append(f"[错误] {e}")
+                        task.log_lines.append(f"[错误] 详情: {tb}")
+                        task.status = "failed"
+                    finally:
+                        if launcher_path:
+                            cleanup_launcher(launcher_path)
+
                     task.finished_at = datetime.now().isoformat()
                     if status_callback:
                         try:
-                            await status_callback(device_id, task.id, "failed")
+                            await status_callback(device_id, task.id, task.status)
                         except Exception:
                             pass
-                    continue
 
-                # 执行脚本
-                try:
-                    def _run_script():
-                        """在子线程中运行脚本并逐行捕获输出"""
-                        process = subprocess.Popen(
-                            [sys.executable, task.script_path],
-                            cwd=self.settings.coin11_tb_path_resolved,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE,
-                            env={**os.environ, "PYTHONUNBUFFERED": "1", "COIN11_TB_DEVICE_SERIAL": device_id},
-                            text=True,
-                            bufsize=1,  # 行缓冲
-                        )
-                        return process
-
-                    process = await asyncio.to_thread(_run_script)
-
-                    async def read_stream(
-                        stream,  # IO[str] from subprocess.PIPE
-                        prefix: str = "",
-                    ) -> None:
-                        loop = asyncio.get_running_loop()
-                        while True:
-                            line = await loop.run_in_executor(
-                                None, stream.readline
-                            )
-                            if not line:
-                                break
-                            text = line.rstrip("\r\n")
-                            if text:
-                                task.log_lines.append(text)
-                                if log_callback:
-                                    try:
-                                        await log_callback(device_id, task.id, text)
-                                    except Exception:
-                                        pass
-
-                    await asyncio.gather(
-                        read_stream(process.stdout),
-                        read_stream(process.stderr),
-                    )
-                    returncode = await asyncio.to_thread(process.wait)
-                    task.status = "completed" if returncode == 0 else "failed"
-
-                    if returncode != 0:
-                        task.log_lines.append(
-                            f"[系统] 进程退出码: {returncode}"
-                        )
-
-                except asyncio.CancelledError:
-                    task.log_lines.append("[系统] 任务被手动取消")
-                    task.status = "failed"
-                except Exception as e:
-                    task.log_lines.append(f"[错误] {e}")
-                    task.status = "failed"
-
-                task.finished_at = datetime.now().isoformat()
-                if status_callback:
-                    try:
-                        await status_callback(device_id, task.id, task.status)
-                    except Exception:
-                        pass
+            except Exception as e:
+                import traceback
+                print(f"[DEBUG runner] ⚠️ 顶级异常: {e}\n{traceback.format_exc()}")
 
             # 所有任务执行完毕
             self._current_task[device_id] = None
