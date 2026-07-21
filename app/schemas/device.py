@@ -53,6 +53,12 @@ class QueueReorderRequest(BaseModel):
     order: list[str] = Field(..., description="任务 ID 排序列表")
 
 
+class BatchTaskCreateRequest(BaseModel):
+    """批量分配任务请求"""
+    script_name: str = Field(..., description="脚本文件名", examples=["淘金币任务.py"])
+    device_ids: list[str] = Field(..., description="目标设备序列号列表")
+
+
 class HealthResponse(BaseModel):
     """健康检查响应"""
     status: str = "ok"
