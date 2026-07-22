@@ -2,8 +2,8 @@
 
 **coin11-control-backend** 是一个基于 **FastAPI** 构建的 Web 后端服务，用于集中控制和监视多台安卓设备，自动执行 **淘宝**、**支付宝**、**闲鱼** 等平台的签到、任务脚本。
 
-> 本项目基于 [coin11-tb](https://github.com/czl0325/coin11-tb) 二次开发，后者提供了淘宝/支付宝/闲鱼等平台的自动化脚本。  
-> 配套前端项目：[coin11-control-frontend](https://github.com/hurttttr/coin11-control-frontend)
+> 本项目基于 [coin11-tb](https://github.com/czl0325/coin11-tb) 二次开发，后者提供了淘宝/支付宝/闲鱼等平台的自动化脚本。  \
+> 配套前端项目：[coin11-control-frontend](https://github.com/hurttttr/coin11-control-frontend)（作为 git 子模块包含在本仓库中）
 
 ---
 
@@ -14,6 +14,11 @@
   - [环境要求](#环境要求)
   - [安装步骤](#安装步骤)
   - [启动服务](#启动服务)
+- [Docker 部署](#docker-部署)
+  - [GitHub Actions 自动构建](#github-actions-自动构建)
+  - [本地构建](#本地构建)
+  - [拉取运行](#拉取运行)
+  - [ADB 设备连接](#adb-设备连接)
 - [项目结构](#项目结构)
 - [API 文档](#api-文档)
   - [设备管理](#设备管理)
@@ -114,6 +119,86 @@ python app/main.py
 ```
 
 服务启动后，访问 **http://127.0.0.1:8000/docs** 即可看到交互式 API 文档（Swagger UI）。
+
+> 项目提供了 `start-coin11.bat` 一键启动脚本（后端 + 前端），双击即可。
+
+---
+
+## Docker 部署
+
+项目使用 **多阶段构建**，自动编译前端后与后端打包成单一镜像，支持 GitHub Actions 自动构建推送。
+
+### 前提条件
+
+- 安装 [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- 设备通过 **Wi-Fi ADB** 连接（`adb connect IP:5555`），Docker 不支持 USB 设备透传
+
+### 克隆项目
+
+```bash
+# 含前端子模块
+git clone --recursive https://github.com/hurttttr/coin11-control-backend.git
+cd coin11-control-backend
+```
+
+如果已经 clone 了但没拉子模块：
+
+```bash
+git submodule update --init --recursive
+```
+
+### 本地构建
+
+```bash
+docker compose build
+```
+
+或直接：
+
+```bash
+docker build -t coin11-control .
+```
+
+### 拉取运行（推荐）
+
+每次 `git push` 后 GitHub Actions 自动构建镜像并推送到 GitHub Container Registry：
+
+```bash
+# 拉取最新镜像
+docker pull ghcr.io/hurttttr/coin11-control-backend:master
+
+# 启动
+docker run -d \
+  --name coin11-control \
+  -p 8748:8748 \
+  ghcr.io/hurttttr/coin11-control-backend:master
+```
+
+或使用 docker compose：
+
+```bash
+docker compose up -d
+```
+
+启动后访问 **http://localhost:8748** 即可使用（无需单独启动前端）。
+
+### ADB 设备连接
+
+容器内通过 Wi-Fi ADB 连接设备：
+
+```bash
+# 进入容器
+docker exec -it coin11-control sh
+
+# 连接设备
+adb connect 192.168.1.100:5555
+```
+
+也可在宿主机连好设备后转发。
+
+### 查看构建状态
+
+Push 后去 GitHub 仓库 → **Actions** tab 查看构建进度，绿色对号表示构建成功。
 
 ---
 
