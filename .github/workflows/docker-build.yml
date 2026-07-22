@@ -1,9 +1,9 @@
 name: Build & Push Docker Image
 
 on:
+  workflow_dispatch:              # 手动触发
   push:
-    branches: [master]
-    tags: ["v*"]
+    tags: ["v*"]                  # 打 tag 时自动触发
 
 env:
   DOCKER_IMAGE: ghcr.io/${{ github.repository }}
