@@ -8,7 +8,7 @@ echo ========================================
 echo.
 
 REM ------ Start Backend (FastAPI) ------
-echo [1/2] Starting backend (port 8748)...
+echo [1/2] Starting backend (port 8000)...
 start "Coin11-Backend" cmd /c "cd /d D:\lenovo\Documents\Code\coin11-control-backend && set PYTHONPATH=.&& .venv\Scripts\python.exe app\main.py"
 echo Backend started.
 
@@ -21,8 +21,8 @@ echo Frontend started.
 
 echo.
 echo ================================================
-echo  Backend API:   http://127.0.0.1:8748
-echo  Backend Docs:  http://127.0.0.1:8748/docs
+echo  Backend API:   http://127.0.0.1:8000
+echo  Backend Docs:  http://127.0.0.1:8000/docs
 echo  Frontend:      http://127.0.0.1:5173
 echo ================================================
 echo.

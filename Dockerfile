@@ -37,10 +37,10 @@ COPY --from=frontend-builder /app/frontend/dist /app/frontend-dist
 
 # 生产环境配置
 ENV HOST=0.0.0.0 \
-    PORT=8748 \
+    PORT=8000 \
     ADB_PATH=adb \
     CORS_ORIGINS='["*"]'
 
-EXPOSE 8748
+EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8748"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

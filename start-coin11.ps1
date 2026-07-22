@@ -13,7 +13,7 @@ $fePidFile = "$pidDir\coin11-fe.pid"
 Remove-Item $bePidFile -ErrorAction SilentlyContinue
 Remove-Item $fePidFile -ErrorAction SilentlyContinue
 
-Write-Host "[1/2] Starting backend (port 8748)..."
+Write-Host "[1/2] Starting backend (port 8000)..."
 $be = Start-Process -WindowStyle Normal -FilePath "cmd.exe" -ArgumentList @(
   "/c", "cd /d D:\lenovo\Documents\Code\coin11-control-backend && set PYTHONPATH=.&& .venv\Scripts\python.exe app\main.py"
 ) -PassThru

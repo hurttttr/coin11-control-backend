@@ -170,7 +170,7 @@ docker pull ghcr.io/hurttttr/coin11-control-backend:master
 # 启动
 docker run -d \
   --name coin11-control \
-  -p 8748:8748 \
+  -p 8000:8000 \
   ghcr.io/hurttttr/coin11-control-backend:master
 ```
 
@@ -180,7 +180,7 @@ docker run -d \
 docker compose up -d
 ```
 
-启动后访问 **http://localhost:8748** 即可使用（无需单独启动前端）。
+启动后访问 **http://localhost:8000** 即可使用（无需单独启动前端）。
 
 ### ADB 设备连接
 

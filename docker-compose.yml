@@ -7,10 +7,10 @@ services:
       dockerfile: Dockerfile
     container_name: coin11-control
     ports:
-      - "8748:8748"
+      - "8000:8000"
     environment:
       - HOST=0.0.0.0
-      - PORT=8748
+      - PORT=8000
       - ADB_PATH=adb
       - CORS_ORIGINS=["*"]
     restart: unless-stopped
