@@ -14,6 +14,7 @@ if sys.platform == "win32":
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.router import router as v1_router
 from app.core.config import get_settings
@@ -96,6 +97,15 @@ app.add_middleware(
 
 # 注册路由
 app.include_router(v1_router)
+
+# ---------- 生产模式: 托管前端静态文件 ----------
+import os as _os
+_frontend_dist = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "frontend-dist")
+if _os.path.isdir(_frontend_dist):
+    app.mount("/", StaticFiles(directory=_frontend_dist, html=True), name="frontend")
+    print(f"[INFO] 生产模式: 前端静态文件已挂载 ({_frontend_dist})")
+else:
+    print(f"[INFO] 开发模式: 前端静态文件未找到 ({_frontend_dist})")
 
 
 # ---------- WebSocket 端点 ----------
