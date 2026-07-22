@@ -1,0 +1,16 @@
+version: "3.9"
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: coin11-control
+    ports:
+      - "8748:8748"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8748
+      - ADB_PATH=adb
+      - CORS_ORIGINS=["*"]
+    restart: unless-stopped
