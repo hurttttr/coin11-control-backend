@@ -182,6 +182,8 @@ docker compose up -d
 
 启动后访问 **http://localhost:8000** 即可使用（无需单独启动前端）。
 
+> 如果部署在远程服务器上，将 `localhost` 替换为服务器 IP，例如 `http://192.168.1.100:8000`。
+
 ### ADB 设备连接
 
 容器内通过 Wi-Fi ADB 连接设备：
