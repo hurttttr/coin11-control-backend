@@ -20,6 +20,12 @@ class DeviceConnectRequest(BaseModel):
     address: str = Field(..., description="IP:Port 格式的远程地址", examples=["192.168.1.100:5555"])
 
 
+class DevicePairRequest(BaseModel):
+    """ADB 配对请求 (Android 11+ 无线配对)"""
+    address: str = Field(..., description="配对地址 IP:Port", examples=["192.168.1.100:41339"])
+    code: str = Field(..., description="六位配对码", examples=["123456"])
+
+
 class DeviceConnectResult(BaseModel):
     """设备连接结果"""
     success: bool

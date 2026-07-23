@@ -11,6 +11,7 @@ from app.services.device_manager import device_manager
 from app.services.websocket_manager import ws_manager
 from app.services.screen_capture import screen_capture
 from app.schemas.device import BatchTaskCreateRequest, BatchDeviceRequest
+from app.services.auto_task_settings import auto_task_settings
 
 router = APIRouter(prefix="/api")
 
@@ -64,6 +65,26 @@ async def batch_enqueue_task(req: BatchTaskCreateRequest):
         "succeeded": len(results),
         "failed": len(errors),
     }
+
+
+# ---------- 自动任务设置 ----------
+
+
+@router.get("/settings/auto-tasks")
+async def get_auto_tasks():
+    """获取自动运行任务脚本列表"""
+    return {"auto_tasks": auto_task_settings.get_auto_tasks()}
+
+
+@router.put("/settings/auto-tasks")
+async def set_auto_tasks(body: dict):
+    """设置自动运行任务脚本列表"""
+    tasks = body.get("auto_tasks", [])
+    if not isinstance(tasks, list):
+        return {"success": False, "error": "auto_tasks 必须为数组"}
+    auto_task_settings.set_auto_tasks(tasks)
+    print(f"[Settings] 自动任务已更新: {tasks}")
+    return {"success": True, "auto_tasks": tasks}
 
 
 @router.post("/tasks/batch-start")

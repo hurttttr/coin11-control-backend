@@ -5,10 +5,13 @@ from fastapi import APIRouter, HTTPException
 
 from app.schemas.device import (
     DeviceConnectRequest,
+    DevicePairRequest,
 )
 from app.services.device_manager import device_manager
 from app.services.screen_capture import screen_capture
 from app.services.task_engine import task_engine
+from app.services.auto_task_settings import auto_task_settings
+from app.services.websocket_manager import ws_manager
 
 router = APIRouter(prefix="/devices", tags=["devices"])
 
@@ -22,9 +25,24 @@ async def list_devices():
 
 @router.post("/connect")
 async def connect_device(req: DeviceConnectRequest):
-    """远程连接 ADB 设备 (IP:Port)"""
+    """远程连接 ADB 设备 (IP:Port)，连接后自动执行已配置的自动任务"""
     result = await device_manager.connect_device(req.address)
+    # 连接成功后自动触发自动任务
+    if result.get("success") and auto_task_settings.has_auto_tasks():
+        await _run_auto_tasks(req.address)
     return result
+
+
+@router.post("/pair")
+async def pair_device(req: DevicePairRequest):
+    """ADB 配对 (Android 11+ 无线调试配对)"""
+    stdout, stderr, rc = await device_manager._run_adb("pair", req.address, req.code, timeout=30)
+    msg = stdout.strip() or stderr.strip()
+    success = "successfully paired" in msg.lower() or "配对成功" in msg
+    return {
+        "success": success,
+        "message": msg,
+    }
 
 
 @router.delete("/{serial}")
@@ -62,3 +80,39 @@ async def get_screenshot(serial: str):
 async def get_device_queue(serial: str):
     """获取设备任务队列"""
     return await task_engine.get_queue(serial)
+
+
+# ---------- 自动任务触发器 ----------
+
+
+async def _run_auto_tasks(device_id: str):
+    """设备连接后自动入队并启动已配置的任务"""
+    tasks = auto_task_settings.get_auto_tasks()
+    if not tasks:
+        return
+    for script_name in tasks:
+        try:
+            await task_engine.enqueue(device_id, script_name)
+            print(f"[AutoTask] 自动入队 {script_name} → {device_id}")
+        except ValueError as e:
+            print(f"[AutoTask] 入队失败 {script_name} → {device_id}: {e}")
+
+    # 启动队列
+    try:
+        if device_id not in screen_capture.active_streams:
+            await screen_capture.start_stream(
+                device_id,
+                callback=lambda img: ws_manager.send_screenshot(device_id, img),
+                fps=2.0,
+            )
+
+        async def log_cb(did: str, tid: str, text: str):
+            await ws_manager.send_log(did, text, task_id=tid)
+
+        async def status_cb(did: str, tid: str, s: str):
+            await ws_manager.send_status(did, tid, s)
+
+        await task_engine.start_queue(device_id, log_callback=log_cb, status_callback=status_cb)
+        print(f"[AutoTask] 队列已启动 → {device_id}")
+    except Exception as e:
+        print(f"[AutoTask] 启动队列失败 → {device_id}: {e}")
