@@ -20,12 +20,19 @@ router = APIRouter(prefix="/devices", tags=["devices"])
 async def list_devices():
     """获取所有已连接的 ADB 设备，新设备自动触发自动任务"""
     devices = await device_manager.get_devices()
+    print(f"[list_devices] 发现 {len(devices)} 台设备: {[d['serial'] for d in devices]}")
     # 对轮询发现的新设备触发自动任务
     if auto_task_settings.has_auto_tasks():
+        print(f"[list_devices] 自动任务已配置: {auto_task_settings.get_auto_tasks()}")
         for d in devices:
             serial = d["serial"]
             if serial not in _auto_task_triggered:
+                print(f"[list_devices] 新设备 {serial}，触发自动任务")
                 await _run_auto_tasks(serial)
+            else:
+                print(f"[list_devices] 设备 {serial} 已触发过，跳过")
+    else:
+        print("[list_devices] 未配置自动任务")
     return devices
 
 
