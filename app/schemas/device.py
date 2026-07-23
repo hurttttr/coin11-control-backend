@@ -59,6 +59,11 @@ class BatchTaskCreateRequest(BaseModel):
     device_ids: list[str] = Field(..., description="目标设备序列号列表")
 
 
+class BatchDeviceRequest(BaseModel):
+    """批量设备操作请求"""
+    device_ids: list[str] = Field(..., description="目标设备序列号列表")
+
+
 class HealthResponse(BaseModel):
     """健康检查响应"""
     status: str = "ok"
