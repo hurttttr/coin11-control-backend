@@ -88,14 +88,22 @@ async def get_device_queue(serial: str):
 async def _run_auto_tasks(device_id: str):
     """设备连接后自动入队并启动已配置的任务"""
     tasks = auto_task_settings.get_auto_tasks()
+    print(f"[AutoTask] 设备 {device_id} 已连接，检查自动任务: {tasks}")
     if not tasks:
+        print("[AutoTask] 无自动任务配置，跳过")
         return
+    enqueued = 0
     for script_name in tasks:
         try:
             await task_engine.enqueue(device_id, script_name)
-            print(f"[AutoTask] 自动入队 {script_name} → {device_id}")
+            enqueued += 1
+            print(f"[AutoTask] ✅ 自动入队 {script_name} → {device_id}")
         except ValueError as e:
-            print(f"[AutoTask] 入队失败 {script_name} → {device_id}: {e}")
+            print(f"[AutoTask] ❌ 入队失败 {script_name} → {device_id}: {e}")
+
+    if enqueued == 0:
+        print("[AutoTask] 没有成功入队的任务，跳过启动队列")
+        return
 
     # 启动队列
     try:
@@ -113,6 +121,6 @@ async def _run_auto_tasks(device_id: str):
             await ws_manager.send_status(did, tid, s)
 
         await task_engine.start_queue(device_id, log_callback=log_cb, status_callback=status_cb)
-        print(f"[AutoTask] 队列已启动 → {device_id}")
+        print(f"[AutoTask] ✅ 队列已启动 → {device_id}")
     except Exception as e:
-        print(f"[AutoTask] 启动队列失败 → {device_id}: {e}")
+        print(f"[AutoTask] ❌ 启动队列失败 → {device_id}: {e}")
