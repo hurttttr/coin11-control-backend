@@ -18,8 +18,14 @@ router = APIRouter(prefix="/devices", tags=["devices"])
 
 @router.get("")
 async def list_devices():
-    """获取所有已连接的 ADB 设备"""
+    """获取所有已连接的 ADB 设备，新设备自动触发自动任务"""
     devices = await device_manager.get_devices()
+    # 对轮询发现的新设备触发自动任务
+    if auto_task_settings.has_auto_tasks():
+        for d in devices:
+            serial = d["serial"]
+            if serial not in _auto_task_triggered:
+                await _run_auto_tasks(serial)
     return devices
 
 
@@ -84,9 +90,16 @@ async def get_device_queue(serial: str):
 
 # ---------- 自动任务触发器 ----------
 
+# 记录已触发自动任务的设备，避免重复触发
+_auto_task_triggered: set[str] = set()
+
 
 async def _run_auto_tasks(device_id: str):
     """设备连接后自动入队并启动已配置的任务"""
+    if device_id in _auto_task_triggered:
+        return
+    _auto_task_triggered.add(device_id)
+
     tasks = auto_task_settings.get_auto_tasks()
     print(f"[AutoTask] 设备 {device_id} 已连接，检查自动任务: {tasks}")
     if not tasks:
