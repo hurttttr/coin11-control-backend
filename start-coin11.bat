@@ -31,16 +31,19 @@ pause >nul
 echo.
 echo Stopping services...
 
-REM ==== 鎸夌鍙ｆ潃杩涚▼ (鍙潃 TCP LISTENING) ====
-
-echo   Backend: killing port 8000...
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr /R "TCP.*:8000 .*LISTENING"') do (
+REM ==== 通过端口查找PID并杀死 ====
+echo   Backend: killing process on port 8000...
+for /f "skip=4 tokens=5" %%a in ('netstat -ano ^| findstr ":8000 "') do (
   if not "%%a"=="0" taskkill /f /t /pid %%a >nul 2>&1
 )
 
-echo   Frontend: killing port 5173...
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr /R "TCP.*:5173 .*LISTENING"') do (
+echo   Frontend: killing process on port 5173...
+for /f "skip=4 tokens=5" %%a in ('netstat -ano ^| findstr ":5173 "') do (
   if not "%%a"=="0" taskkill /f /t /pid %%a >nul 2>&1
 )
+
+REM 额外清理: 杀本窗口启动的孤儿进程
+taskkill /f /fi "WINDOWTITLE eq Coin11-Backend" >nul 2>&1
+taskkill /f /fi "WINDOWTITLE eq Coin11-Frontend" >nul 2>&1
 
 echo Done.

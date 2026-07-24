@@ -36,15 +36,17 @@ Write-Host "Stopping services..."
 $ports = @(8000, 5173)
 $names = @{8000 = "Backend"; 5173 = "Frontend"}
 
-foreach ($port in $ports) {
+foreach ($port in $ports.Keys) {
   $name = $names[$port]
   Write-Host "  $name`: killing port $port..."
   try {
-    $conn = netstat -ano | Select-String "TCP.*:$port .*LISTENING"
+    $conn = netstat -ano | Select-String ":$port "
     if ($conn) {
       $pids = $conn | ForEach-Object { $_ -split '\s+' | Select-Object -Last 1 } | Get-Unique
       foreach ($pid in $pids) {
-        taskkill /f /t /pid $pid 2>$null | Out-Null
+        if ($pid -ne "0" -and $pid -ne "PID") {
+          taskkill /f /t /pid $pid 2>$null | Out-Null
+        }
       }
       Write-Host "    done"
     } else {
@@ -54,5 +56,9 @@ foreach ($port in $ports) {
     Write-Host "    error: $_"
   }
 }
+
+# 额外清理
+taskkill /f /fi "WINDOWTITLE eq Coin11-Backend" 2>$null | Out-Null
+taskkill /f /fi "WINDOWTITLE eq Coin11-Frontend" 2>$null | Out-Null
 
 Write-Host "Done."
