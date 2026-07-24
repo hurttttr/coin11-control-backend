@@ -7,14 +7,14 @@ echo   Coin11 Control - Start All
 echo ========================================
 echo.
 
-REM ------ Start Backend (FastAPI) ------
+REM ------ Start Backend ------
 echo [1/2] Starting backend (port 8000)...
 start "Coin11-Backend" cmd /c "cd /d D:\lenovo\Documents\Code\coin11-control-backend && set PYTHONPATH=.&& .venv\Scripts\python.exe app\main.py"
 echo Backend started.
 
 timeout /t 3 /nobreak >nul
 
-REM ------ Start Frontend (Vite) ------
+REM ------ Start Frontend ------
 echo [2/2] Starting frontend (port 5173)...
 start "Coin11-Frontend" cmd /c "cd /d D:\lenovo\Documents\Code\coin11-control-frontend && npm run dev"
 echo Frontend started.
@@ -31,26 +31,16 @@ pause >nul
 echo.
 echo Stopping services...
 
-REM ʹ�� PowerShell ���˿�ɱ���� (��ɿ���ʽ)
-powershell -Command "
-  $ports = @(8000, 5173);
-  $names = @{8000="Backend"; 5173="Frontend"};
-  $found = $false;
-  foreach ($port in $ports) {
-    $conn = netstat -ano | Select-String ":$port ";
-    if ($conn) {
-      $pids = $conn | ForEach-Object { $_ -split "\s+" | Select-Object -Last 1 } | Select-Object -Unique;
-      foreach ($pid in $pids) {
-        taskkill /f /t /pid $pid 2>$null | Out-Null;
-      }
-      Write-Host "  $($names[$port]) stopped (port $port)";
-      $found = $true;
-    } else {
-      Write-Host "  $($names[$port]) not running";
-    }
-  }
-  if (-not $found) { Write-Host "  No services found on ports 8000, 5173"; }
-"
+REM ==== 按端口杀进程 (只杀 TCP LISTENING) ====
 
-REM 安全网: 清理残留进程（仅限从本窗口启动的）
+echo   Backend: killing port 8000...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr /R "TCP.*:8000 .*LISTENING"') do (
+  if not "%%a"=="0" taskkill /f /t /pid %%a >nul 2>&1
+)
+
+echo   Frontend: killing port 5173...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr /R "TCP.*:5173 .*LISTENING"') do (
+  if not "%%a"=="0" taskkill /f /t /pid %%a >nul 2>&1
+)
+
 echo Done.
