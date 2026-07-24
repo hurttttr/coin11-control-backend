@@ -26,18 +26,31 @@ echo  Backend Docs:  http://127.0.0.1:8000/docs
 echo  Frontend:      http://127.0.0.1:5173
 echo ================================================
 echo.
-echo Press any key to stop all services...
+set /p "=Press ENTER to stop all services..." <nul
 pause >nul
-
 echo.
 echo Stopping services...
 
-REM Step 1: Kill the cmd windows (which kills their child process trees)
-taskkill /f /t /fi "WindowTitle eq Coin11-Backend" >nul 2>&1 && echo   Backend stopped
-taskkill /f /t /fi "WindowTitle eq Coin11-Frontend" >nul 2>&1 && echo   Frontend stopped
+REM ʹ�� PowerShell ���˿�ɱ���� (��ɿ���ʽ)
+powershell -Command "
+  $ports = @(8000, 5173);
+  $names = @{8000="Backend"; 5173="Frontend"};
+  $found = $false;
+  foreach ($port in $ports) {
+    $conn = netstat -ano | Select-String ":$port ";
+    if ($conn) {
+      $pids = $conn | ForEach-Object { $_ -split "\s+" | Select-Object -Last 1 } | Select-Object -Unique;
+      foreach ($pid in $pids) {
+        taskkill /f /t /pid $pid 2>$null | Out-Null;
+      }
+      Write-Host "  $($names[$port]) stopped (port $port)";
+      $found = $true;
+    } else {
+      Write-Host "  $($names[$port]) not running";
+    }
+  }
+  if (-not $found) { Write-Host "  No services found on ports 8000, 5173"; }
+"
 
-REM Step 2: Also kill any orphan python/node processes that might have survived
-taskkill /f /im python.exe /fi "WindowTitle eq Coin11-*" >nul 2>&1
-taskkill /f /im node.exe /fi "WindowTitle eq Coin11-*" >nul 2>&1
-
+REM 安全网: 清理残留进程（仅限从本窗口启动的）
 echo Done.

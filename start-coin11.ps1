@@ -5,20 +5,11 @@ Write-Host "  Coin11 Control - Start All"
 Write-Host "========================================"
 Write-Host ""
 
-$pidDir = "$env:TEMP"
-$bePidFile = "$pidDir\coin11-be.pid"
-$fePidFile = "$pidDir\coin11-fe.pid"
-
-# Clean old PID files
-Remove-Item $bePidFile -ErrorAction SilentlyContinue
-Remove-Item $fePidFile -ErrorAction SilentlyContinue
-
 Write-Host "[1/2] Starting backend (port 8000)..."
 $be = Start-Process -WindowStyle Normal -FilePath "cmd.exe" -ArgumentList @(
   "/c", "cd /d D:\lenovo\Documents\Code\coin11-control-backend && set PYTHONPATH=.&& .venv\Scripts\python.exe app\main.py"
 ) -PassThru
-$be.Id | Out-File $bePidFile
-Write-Host "  Backend started (PID: $($be.Id))"
+Write-Host "  Backend started"
 
 Start-Sleep -Seconds 3
 
@@ -26,13 +17,12 @@ Write-Host "[2/2] Starting frontend (port 5173)..."
 $fe = Start-Process -WindowStyle Normal -FilePath "cmd.exe" -ArgumentList @(
   "/c", "cd /d D:\lenovo\Documents\Code\coin11-control-frontend && npm run dev"
 ) -PassThru
-$fe.Id | Out-File $fePidFile
-Write-Host "  Frontend started (PID: $($fe.Id))"
+Write-Host "  Frontend started"
 
 Write-Host ""
 Write-Host "================================================"
-Write-Host "  Backend API:   http://127.0.0.1:8748"
-Write-Host "  Backend Docs:  http://127.0.0.1:8748/docs"
+Write-Host "  Backend API:   http://127.0.0.1:8000"
+Write-Host "  Backend Docs:  http://127.0.0.1:8000/docs"
 Write-Host "  Frontend:      http://127.0.0.1:5173"
 Write-Host "================================================"
 Write-Host ""
@@ -42,24 +32,26 @@ $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 Write-Host ""
 Write-Host "Stopping services..."
 
-# Kill backend tree (taskkill /t kills child process tree)
-if (Test-Path $bePidFile) {
-  $pid = Get-Content $bePidFile
-  taskkill /f /t /pid $pid 2>$null | Out-Null
-  Write-Host "  Backend stopped"
-  Remove-Item $bePidFile
-} else {
-  Write-Host "  [WARN] No backend PID file"
+# 按端口杀进程（最可靠方式）
+$ports = @{8000 = "Backend"; 5173 = "Frontend"}
+$found = $false
+
+foreach ($port in $ports.Keys) {
+  $conn = netstat -ano | Select-String ":$port "
+  if ($conn) {
+    $pids = $conn | ForEach-Object { $_ -split '\s+' | Select-Object -Last 1 } | Select-Object -Unique
+    foreach ($pid in $pids) {
+      taskkill /f /t /pid $pid 2>$null | Out-Null
+    }
+    Write-Host "  $($ports[$port]) stopped (port $port)"
+    $found = $true
+  } else {
+    Write-Host "  $($ports[$port]) not running"
+  }
 }
 
-# Kill frontend tree
-if (Test-Path $fePidFile) {
-  $pid = Get-Content $fePidFile
-  taskkill /f /t /pid $pid 2>$null | Out-Null
-  Write-Host "  Frontend stopped"
-  Remove-Item $fePidFile
-} else {
-  Write-Host "  [WARN] No frontend PID file"
+if (-not $found) {
+  Write-Host "  No services found on ports 8000, 5173"
 }
 
 Write-Host "Done."
