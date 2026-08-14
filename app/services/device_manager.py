@@ -19,33 +19,15 @@ class DeviceManager:
     def __init__(self):
         self.settings = get_settings()
         self._adb_path = self.settings.ADB_PATH
+        # 最近一次 refresh() 的设备快照缓存。get_devices() 只返回此缓存，
+        # 不直接执行 adb —— 全量扫描统一由 refresh() 驱动（watcher/显式调用），
+        # 避免 watcher 与前端轮询各自触发一遍 adb devices。
+        self._devices_cache: list[dict] = []
 
-    async def _run_adb(self, *args, timeout: int = 10) -> tuple[str, str, int]:
-        """执行 ADB 命令，返回 (stdout, stderr, returncode)"""
-        cmd = [self._adb_path] + list(args)
-
-        def _run():
-            try:
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    timeout=timeout,
-                    text=True,
-                )
-                return (
-                    result.stdout.strip(),
-                    result.stderr.strip(),
-                    result.returncode,
-                )
-            except subprocess.TimeoutExpired:
-                return "", "timeout", -1
-
-        return await asyncio.to_thread(_run)
-
-    async def get_devices(self) -> list[dict]:
+    async def refresh(self) -> list[dict]:
         """
-        获取已连接的 ADB 设备列表
-        解析 adb devices -l 输出
+        执行真实的 adb devices -l 全量扫描并解析，更新 _devices_cache。
+        返回本次扫描后的设备快照。
         """
         stdout, _, _ = await self._run_adb("devices", "-l")
         devices = []
@@ -74,7 +56,37 @@ class DeviceManager:
                     "connection_type": conn_type,
                     "android_version": "Unknown",
                 })
+        self._devices_cache = devices
         return devices
+
+    async def get_devices(self) -> list[dict]:
+        """
+        获取已连接的 ADB 设备列表 —— 返回最近一次 refresh() 的缓存快照。
+        不直接执行 adb（避免与 watcher 双重全量扫描）。
+        """
+        return self._devices_cache
+
+    async def _run_adb(self, *args, timeout: int = 10) -> tuple[str, str, int]:
+        """执行 ADB 命令，返回 (stdout, stderr, returncode)"""
+        cmd = [self._adb_path] + list(args)
+
+        def _run():
+            try:
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    timeout=timeout,
+                    text=True,
+                )
+                return (
+                    result.stdout.strip(),
+                    result.stderr.strip(),
+                    result.returncode,
+                )
+            except subprocess.TimeoutExpired:
+                return "", "timeout", -1
+
+        return await asyncio.to_thread(_run)
 
     async def connect_device(self, address: str) -> dict:
         """
@@ -108,25 +120,24 @@ class DeviceManager:
     async def get_device_info(self, serial: str) -> Optional[dict]:
         """
         获取单台设备的详细信息
-        通过 adb -s <serial> shell getprop 获取型号和 Android 版本
+        先 refresh() 刷新设备缓存判断设备在线，再通过一次 adb 调用
+        （adb -s <serial> shell "getprop ...; getprop ..."）获取型号和 Android 版本。
         """
-        # 先检查设备是否在线
-        devices = await self.get_devices()
+        # 先刷新缓存并检查设备是否在线
+        devices = await self.refresh()
         device_map = {d["serial"]: d for d in devices}
         if serial not in device_map:
             return None
 
-        # 获取型号
-        stdout_model, _, _ = await self._run_adb(
-            "-s", serial, "shell", "getprop", "ro.product.model", timeout=5
+        # 一次 adb 调用获取型号 + Android 版本（两条 getprop，按行解析）
+        stdout_props, _, _ = await self._run_adb(
+            "-s", serial, "shell",
+            "getprop ro.product.model; getprop ro.build.version.release",
+            timeout=5,
         )
-        model = stdout_model.strip() or device_map[serial]["model"]
-
-        # 获取 Android 版本
-        stdout_ver, _, _ = await self._run_adb(
-            "-s", serial, "shell", "getprop", "ro.build.version.release", timeout=5
-        )
-        android_version = stdout_ver.strip() or "Unknown"
+        lines = [ln.strip() for ln in stdout_props.splitlines() if ln.strip()]
+        model = lines[0] if lines else device_map[serial]["model"]
+        android_version = lines[1] if len(lines) > 1 else "Unknown"
 
         # 获取连接方式
         conn_type = "wifi" if (":" in serial and "." in serial) else "usb"
