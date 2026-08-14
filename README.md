@@ -181,6 +181,16 @@ docker run -d --name coin11-control -p 8000:8000 ghcr.io/hurttttr/coin11-control
 
 ## 📦 版本发布说明
 
+### v0.3.1 (2026-08-14)
+
+> 🔧 工程化细节加固：日志、启动速度、依赖与部署
+
+**改进：**
+- 📋 **统一日志** — 全项目 `print` 迁移为标准 `logging`（INFO 级别控制台输出，消息格式与内容不变），宽泛 `except: pass` 补日志/注释
+- ⚡ **启动加速** — coin11-tb 目录不存在时 git clone 改为后台执行，不再阻塞首次启动
+- 📦 **依赖整理** — `uv.lock` 入库保证可复现；移除零引用的 `adbutils`/`construct`（连带 torch/opencv 等重型传递依赖）；pyproject 版本对齐 v0.3.0；新增 `.env.example` 配置模板
+- 🐳 **Docker 部署增强** — 镜像与 compose 增加健康检查（python 探活 `/api/health`）；`task_state.json`/`auto_task_settings.json` 持久化到命名卷，容器重建不丢状态
+
 ### v0.3.0 (2026-08-14)
 
 > 🚀 可靠性、安全性与工程化全面加固
@@ -268,7 +278,7 @@ coin11-control-backend/
 
 ## ⚙️ 配置说明
 
-通过 `.env` 文件配置：
+复制 `.env.example` 为 `.env` 后按需修改（`AUTH_TOKEN` 留空 = 不启用 HTTP API 鉴权）：
 
 ```ini
 HOST=127.0.0.1
