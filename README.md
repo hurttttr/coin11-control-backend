@@ -4,7 +4,7 @@
 
 **多设备安卓自动化任务控制平台**
 
-[![Version](https://img.shields.io/badge/版本-v0.2.1-00f0ff?style=flat-square)](https://github.com/hurttttr/coin11-control-backend/releases)
+[![Version](https://img.shields.io/badge/版本-v0.3.0-00f0ff?style=flat-square)](https://github.com/hurttttr/coin11-control-backend/releases)
 [![Python](https://img.shields.io/badge/Python-3.12+-3776AB?style=flat-square&logo=python&logoColor=white)]()
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi&logoColor=white)]()
 [![Vue 3](https://img.shields.io/badge/Frontend-Vue_3-4FC08D?style=flat-square&logo=vue.js&logoColor=white)]()
@@ -181,6 +181,23 @@ docker run -d --name coin11-control -p 8000:8000 ghcr.io/hurttttr/coin11-control
 
 ## 📦 版本发布说明
 
+### v0.3.0 (2026-08-14)
+
+> 🚀 可靠性、安全性与工程化全面加固
+
+**修复（P0）：**
+- 🛑 **停止队列 = 真正停止** — `stop_queue` 现在会终止正在运行的脚本子进程，不再出现"点了停止、手机上的脚本还在跑"的问题；后端关闭时同样清理全部子进程
+- ⚡ **运行中入队自动执行** — 队列执行器改为持续消费模式，运行期间新入队的任务会被同一执行器自动取走执行，不再需要手动重新启动
+- 🔒 **API 鉴权与输入校验** — 新增 `AuthMiddleware`（`AUTH_TOKEN` 环境变量启用，默认关闭不影响现有前端）；`/devices/connect`、`/devices/pair` 的地址强制 `IPv4:port` 格式、配对码强制 6 位数字
+- 📉 **日志内存上限** — 任务日志改为 `deque(maxlen=200)`，长时间运行不再无限膨胀
+
+**增强（P1）：**
+- 💾 **任务状态持久化** — 队列/任务状态落盘（`task_state.json`），服务重启后自动恢复（中断任务标记为失败）；启动时自动清理上次崩溃遗留的孤儿脚本进程
+- 🔁 **设备重连重新触发自动任务** — 设备断开后自动解除触发标记，重连后可再次自动运行任务
+- ⚡ **ADB 扫描缓存** — 设备扫描收敛为后台 watcher 单点刷新（5s），前端轮询直接读缓存，消除双重全量扫描；每设备 getprop 从 3 次 subprocess 降为 2 次
+- 🧪 **单元测试 + CI** — 新增任务引擎/状态持久化/鉴权/watcher 单元测试（43 项）；GitHub Actions 新增 `Tests` 工作流（ubuntu + windows 双平台）
+- 🧹 **代码清理** — 删除死代码（models/schemas 重复模型）、收敛三处重复的队列启动块为 `start_queue_full`、统一 GBK→UTF-8 编码
+
 ### v0.2.1 (2026-08-14)
 
 > 🐛 修复：设备自动任务不再依赖打开网页，后端启动即自动工作
@@ -230,9 +247,10 @@ coin11-control-backend/
 │   │   ├── devices.py          # 设备管理 + 自动任务触发
 │   │   └── tasks.py            # 任务队列端点
 │   ├── services/
-│   │   ├── device_manager.py   # ADB 设备发现
-│   │   ├── task_engine.py      # 任务队列引擎
+│   │   ├── device_manager.py   # ADB 设备发现（缓存 + 刷新）
+│   │   ├── task_engine.py      # 任务队列引擎（持续消费 + 子进程管理）
 │   │   ├── auto_task_runner.py # 自动任务触发 + 后台设备监视
+│   │   ├── state_store.py      # 任务状态持久化 + 孤儿进程清理
 │   │   ├── screen_capture.py   # 截图流服务
 │   │   ├── websocket_manager.py
 │   │   ├── auto_task_settings.py  # 自动任务持久化
@@ -258,6 +276,8 @@ PORT=8000
 ADB_PATH=adb
 CORS_ORIGINS=["http://localhost:5173","http://127.0.0.1:5173"]
 WS_AUTH_TOKEN=coin11-control-token
+# HTTP API 鉴权 Token（留空=不启用鉴权；启用后前端需在请求头携带 X-Auth-Token）
+AUTH_TOKEN=
 COIN11_TB_REPO_URL=https://github.com/czl0325/coin11-tb.git
 ```
 
