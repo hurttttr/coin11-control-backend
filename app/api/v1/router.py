@@ -8,8 +8,6 @@ from app.api.v1.tasks import router as tasks_router
 from app.api.v1.update import router as update_router
 from app.services.task_engine import task_engine
 from app.services.device_manager import device_manager
-from app.services.websocket_manager import ws_manager
-from app.services.screen_capture import screen_capture
 from app.schemas.device import BatchTaskCreateRequest, BatchDeviceRequest
 from app.services.auto_task_settings import auto_task_settings
 
@@ -94,25 +92,7 @@ async def batch_start_queues(req: BatchDeviceRequest):
     errors = []
     for device_id in req.device_ids:
         try:
-            # 确保截图流正在运行
-            if device_id not in screen_capture.active_streams:
-                await screen_capture.start_stream(
-                    device_id,
-                    callback=lambda img: ws_manager.send_screenshot(device_id, img),
-                    fps=2.0,
-                )
-
-            async def log_callback(did: str, tid: str, text: str):
-                await ws_manager.send_log(did, text, task_id=tid)
-
-            async def status_callback(did: str, tid: str, status: str):
-                await ws_manager.send_status(did, tid, status)
-
-            started = await task_engine.start_queue(
-                device_id,
-                log_callback=log_callback,
-                status_callback=status_callback,
-            )
+            started = await task_engine.start_queue_full(device_id)
             if started:
                 results.append({"device_id": device_id, "status": "started"})
             else:
