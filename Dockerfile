@@ -43,4 +43,8 @@ ENV HOST=0.0.0.0 \
 
 EXPOSE 8000
 
+# 镜像基于 python:3.12-slim 无 curl，用 python 探活（与 docker-compose healthcheck 同款）
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).status==200 else 1)"
+
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

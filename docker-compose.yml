@@ -13,4 +13,19 @@ services:
       - PORT=8000
       - ADB_PATH=adb
       - CORS_ORIGINS=["*"]
+      # 运行时状态持久化到命名卷
+      - COIN11_STATE_FILE=/app/data/task_state.json
+      - AUTO_TASK_SETTINGS_FILE=/app/data/auto_task_settings.json
+    volumes:
+      - coin11-data:/app/data
+    healthcheck:
+      # 镜像基于 python:3.12-slim，无 curl，用 python 探活
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     restart: unless-stopped
+
+volumes:
+  coin11-data:
