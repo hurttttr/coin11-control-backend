@@ -10,3 +10,8 @@ env/
 venv/
 uv.lock
 coin11_tb/
+.test-tmp/
+.pytest_cache/
+.mypy_cache/
+# 运行时生成的自动任务配置（本机用户选择，不入库）
+auto_task_settings.json
