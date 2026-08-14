@@ -1,6 +1,8 @@
 """
 设备管理端点
 """
+import logging
+
 from fastapi import APIRouter, HTTPException
 
 from app.schemas.device import (
@@ -13,6 +15,8 @@ from app.services.task_engine import task_engine
 from app.services.auto_task_settings import auto_task_settings
 from app.services.auto_task_runner import run_auto_tasks, is_triggered
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/devices", tags=["devices"])
 
 
@@ -20,18 +24,18 @@ router = APIRouter(prefix="/devices", tags=["devices"])
 async def list_devices():
     """获取所有已连接的 ADB 设备，新设备自动触发自动任务"""
     devices = await device_manager.get_devices()
-    print(f"[list_devices] 发现 {len(devices)} 台设备: {[d['serial'] for d in devices]}")
+    logger.info(f"[list_devices] 发现 {len(devices)} 台设备: {[d['serial'] for d in devices]}")
     # 对轮询发现的新设备触发自动任务（去重由 auto_task_runner 保证）
     if auto_task_settings.has_auto_tasks():
         for d in devices:
             serial = d["serial"]
             if not is_triggered(serial):
-                print(f"[list_devices] 新设备 {serial}，触发自动任务")
+                logger.info(f"[list_devices] 新设备 {serial}，触发自动任务")
                 await run_auto_tasks(serial)
             else:
-                print(f"[list_devices] 设备 {serial} 已触发过，跳过")
+                logger.info(f"[list_devices] 设备 {serial} 已触发过，跳过")
     else:
-        print("[list_devices] 未配置自动任务")
+        logger.info("[list_devices] 未配置自动任务")
     return devices
 
 

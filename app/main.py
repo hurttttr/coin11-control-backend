@@ -3,6 +3,7 @@ Coin11-TB Control API — FastAPI 应用入口
 """
 import asyncio
 import logging
+import os
 import sys
 from contextlib import asynccontextmanager
 
@@ -11,6 +12,8 @@ logger = logging.getLogger(__name__)
 # Windows CMD GBK 兼容：强制 stdout 使用 UTF-8
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,12 +35,12 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # 启动时
-    print("=" * 50)
-    print("  Coin11-TB Control API 启动中...")
-    print(f"  内置路径: {settings.coin11_tb_path_resolved}")
-    print(f"  ADB 路径: {settings.ADB_PATH}")
-    print(f"  监听地址: {settings.HOST}:{settings.PORT}")
-    print("=" * 50)
+    logger.info("=" * 50)
+    logger.info("  Coin11-TB Control API 启动中...")
+    logger.info(f"  内置路径: {settings.coin11_tb_path_resolved}")
+    logger.info(f"  ADB 路径: {settings.ADB_PATH}")
+    logger.info(f"  监听地址: {settings.HOST}:{settings.PORT}")
+    logger.info("=" * 50)
 
     # 检查 ADB 是否可用
     def check_adb():
@@ -49,9 +52,9 @@ async def lifespan(app: FastAPI):
             return False
     adb_ok = await asyncio.to_thread(check_adb)
     if adb_ok:
-        print(f"  [OK] ADB 可用: {settings.ADB_PATH}")
+        logger.info(f"  [OK] ADB 可用: {settings.ADB_PATH}")
     else:
-        print(f"  [WARN] ADB 未找到 — 设备管理功能将不可用")
+        logger.warning(f"  [WARN] ADB 未找到 — 设备管理功能将不可用")
 
     # 初始化 RepoManager 并自动 clone/更新 coin11-tb 仓库
     import app.services.repo_manager as rm
@@ -60,14 +63,28 @@ async def lifespan(app: FastAPI):
     repo_mgr = RepoManager(coin11_tb_path, settings.COIN11_TB_REPO_URL)
     rm.repo_manager = repo_mgr
 
-    clone_ok = await repo_mgr.ensure_repo()
-    if clone_ok:
-        print(f"  [OK] coin11-tb 仓库就绪: {coin11_tb_path}")
+    # coin11-tb 目录已存在：直接走同步快路径（git 仓库→秒回 ready；非 git→秒回 error）
+    if os.path.isdir(coin11_tb_path):
+        clone_ok = await repo_mgr.ensure_repo()
+        if clone_ok:
+            logger.info(f"  [OK] coin11-tb 仓库就绪: {coin11_tb_path}")
+        else:
+            logger.warning(f"  [WARN] coin11-tb 仓库初始化失败: {repo_mgr.error_msg}")
     else:
-        print(f"  [WARN] coin11-tb 仓库初始化失败: {repo_mgr.error_msg}")
+        # 目录不存在（首次运行需克隆，最长 120s）：不阻塞启动，后台异步初始化
+        app.state.coin11_tb_ready = False
 
-    print(f"  [OK] Coin11-TB Control API 已启动")
-    print("=" * 50)
+        async def _clone_background():
+            ok = await repo_mgr.ensure_repo()
+            app.state.coin11_tb_ready = ok
+            logger.info(f"[OK] coin11-tb 仓库后台初始化{'成功' if ok else '失败'}: {coin11_tb_path}")
+
+        asyncio.create_task(_clone_background())
+        logger.info(f"  [OK] coin11-tb 仓库后台初始化开始: {coin11_tb_path}")
+        clone_ok = False
+
+    logger.info("  [OK] Coin11-TB Control API 已启动")
+    logger.info("=" * 50)
 
     # 将检查结果存入 app.state
     app.state.adb_available = adb_ok
@@ -90,8 +107,8 @@ async def lifespan(app: FastAPI):
     # 停止所有任务并把最终状态持久化到磁盘
     await task_engine.stop_all()
     await state_store.save_now()
-    print("Coin11-TB Control API 正在关闭...")
-    print("资源已清理")
+    logger.info("Coin11-TB Control API 正在关闭...")
+    logger.info("资源已清理")
 
 
 app = FastAPI(
@@ -121,9 +138,9 @@ import os as _os
 _frontend_dist = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "frontend-dist")
 if _os.path.isdir(_frontend_dist):
     app.mount("/", StaticFiles(directory=_frontend_dist, html=True), name="frontend")
-    print(f"[INFO] 生产模式: 前端静态文件已挂载 ({_frontend_dist})")
+    logger.info(f"[INFO] 生产模式: 前端静态文件已挂载 ({_frontend_dist})")
 else:
-    print(f"[INFO] 开发模式: 前端静态文件未找到 ({_frontend_dist})")
+    logger.info(f"[INFO] 开发模式: 前端静态文件未找到 ({_frontend_dist})")
 
 
 # ---------- WebSocket 端点 ----------
@@ -178,7 +195,7 @@ async def device_websocket(websocket: WebSocket, device_id: str, token: str = Qu
     except WebSocketDisconnect:
         pass
     except Exception:
-        pass
+        logger.warning("WebSocket 处理异常", exc_info=True)
     finally:
         await ws_manager.disconnect(device_id, websocket)
         # 如果没有其他客户端连接，停止截图流

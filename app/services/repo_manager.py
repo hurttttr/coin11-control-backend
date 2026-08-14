@@ -1,9 +1,12 @@
 """Coin11-TB 仓库管理服务 — 自动 clone / 更新检测 / pull"""
 
 import asyncio
+import logging
 import os
 import subprocess
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 
 class RepoManager:
@@ -28,18 +31,18 @@ class RepoManager:
             if os.path.isdir(git_dir):
                 # 仓库已存在，git fetch 检查更新
                 self._status = "ready"
-                print(f"[RepoManager] 仓库已存在: {self.repo_path}")
+                logger.info(f"[RepoManager] 仓库已存在: {self.repo_path}")
                 return True
             else:
                 # 目录存在但不是 git 仓库
                 self._status = "error"
                 self._error_msg = f"路径 {self.repo_path} 已存在但不是 Git 仓库"
-                print(f"[RepoManager] {self._error_msg}")
+                logger.error(f"[RepoManager] {self._error_msg}")
                 return False
 
         # 目录不存在，clone
         self._status = "cloning"
-        print(f"[RepoManager] 正在克隆 coin11-tb 仓库 ({self.repo_url}) ...")
+        logger.info(f"[RepoManager] 正在克隆 coin11-tb 仓库 ({self.repo_url}) ...")
 
         def _clone():
             result = subprocess.run(
@@ -53,11 +56,11 @@ class RepoManager:
         success, err = await asyncio.to_thread(_clone)
         if success:
             self._status = "ready"
-            print(f"[RepoManager] coin11-tb 仓库克隆成功: {self.repo_path}")
+            logger.info(f"[RepoManager] coin11-tb 仓库克隆成功: {self.repo_path}")
         else:
             self._status = "error"
             self._error_msg = f"克隆失败: {err}"
-            print(f"[RepoManager] {self._error_msg}")
+            logger.error(f"[RepoManager] {self._error_msg}")
         return success
 
     async def check_update(self) -> dict:

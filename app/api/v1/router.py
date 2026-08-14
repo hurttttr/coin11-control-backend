@@ -1,6 +1,8 @@
 """
 API v1 路由聚合
 """
+import logging
+
 from fastapi import APIRouter
 
 from app.api.v1.devices import router as devices_router
@@ -10,6 +12,8 @@ from app.services.task_engine import task_engine
 from app.services.device_manager import device_manager
 from app.schemas.device import BatchTaskCreateRequest, BatchDeviceRequest
 from app.services.auto_task_settings import auto_task_settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
 
@@ -81,7 +85,7 @@ async def set_auto_tasks(body: dict):
     if not isinstance(tasks, list):
         return {"success": False, "error": "auto_tasks 必须为数组"}
     auto_task_settings.set_auto_tasks(tasks)
-    print(f"[Settings] 自动任务已更新: {tasks}")
+    logger.info(f"[Settings] 自动任务已更新: {tasks}")
     return {"success": True, "auto_tasks": tasks}
 
 

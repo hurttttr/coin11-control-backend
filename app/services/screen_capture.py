@@ -6,10 +6,13 @@
 """
 
 import asyncio
+import logging
 import subprocess
 from typing import Callable
 
 from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class ScreenCapture:
@@ -73,7 +76,7 @@ class ScreenCapture:
                 except asyncio.CancelledError:
                     break
                 except Exception as e:
-                    print(f"[ScreenCapture] 截图失败 {serial}: {e}")
+                    logger.warning(f"[ScreenCapture] 截图失败 {serial}: {e}")
                 await asyncio.sleep(interval)
 
         self._stream_tasks[serial] = asyncio.create_task(loop())
@@ -87,7 +90,7 @@ class ScreenCapture:
             try:
                 await task
             except asyncio.CancelledError:
-                pass
+                pass  # 取消路径的预期中断，无需日志
 
 
 # 全局单例

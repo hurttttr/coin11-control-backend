@@ -12,6 +12,7 @@
 """
 
 import asyncio
+import logging
 import os
 import subprocess
 import sys
@@ -22,6 +23,8 @@ from typing import Callable, Optional
 
 from app.core.config import get_settings
 from app.services.device_selector_patch import create_launcher_script, cleanup_launcher
+
+logger = logging.getLogger(__name__)
 
 
 class Task:
@@ -163,10 +166,10 @@ class TaskEngine:
         """获取设备队列状态"""
         q = self._queues.get(device_id)
         if q is None:
-            print(f"[DEBUG get_queue] device_id={device_id!r} -> key not in _queues (defaultdict would create empty)")
+            logger.debug(f"[DEBUG get_queue] device_id={device_id!r} -> key not in _queues (defaultdict would create empty)")
             return []
         result = [t.to_dict() for t in q]
-        print(f"[DEBUG get_queue] device_id={device_id!r} -> {len(q)} tasks, returning {len(result)} items")
+        logger.debug(f"[DEBUG get_queue] device_id={device_id!r} -> {len(q)} tasks, returning {len(result)} items")
         return result
 
     # ---------- 快照 / 恢复（契约） ----------
@@ -282,7 +285,7 @@ class TaskEngine:
                     # 任务结束后清空当前任务，继续循环消费后续/新入队任务
                     self._current_task[device_id] = None
             except asyncio.CancelledError:
-                pass
+                pass  # 停止/关闭时预期取消 runner 循环，正常退出
             finally:
                 # 兜底清理：残留进程 / 当前任务 / 运行标志 / 条件
                 proc = self._processes.pop(device_id, None)
@@ -290,6 +293,7 @@ class TaskEngine:
                     try:
                         proc.kill()
                     except OSError:
+                        # 子进程可能在 runner 取消前已退出，kill 报 OSError 属正常清理路径
                         pass
                 self._current_task[device_id] = None
                 self._running[device_id] = None
@@ -314,11 +318,11 @@ class TaskEngine:
                 try:
                     await status_callback(device_id, task.id, "running")
                 except Exception:
-                    pass
+                    logger.debug("状态回调失败 (running)", exc_info=True)
 
             # 检查脚本是否存在
             if not os.path.isfile(task.script_path):
-                print(f"[DEBUG runner] 任务 {task.id} 脚本不存在: {task.script_path}")
+                logger.debug(f"[DEBUG runner] 任务 {task.id} 脚本不存在: {task.script_path}")
                 task.log_lines.append(f"[错误] 脚本文件不存在: {task.script_path}")
                 task.status = "failed"
                 task.finished_at = datetime.now().isoformat()
@@ -326,7 +330,7 @@ class TaskEngine:
                     try:
                         await status_callback(device_id, task.id, "failed")
                     except Exception:
-                        pass
+                        logger.debug("状态回调失败 (failed)", exc_info=True)
                 ok = True
                 return
 
@@ -394,7 +398,7 @@ class TaskEngine:
                                 try:
                                     await log_callback(device_id, task.id, text)
                                 except Exception:
-                                    pass
+                                    logger.debug("日志回调失败", exc_info=True)
 
                 await asyncio.gather(
                     read_stream(process.stdout),
@@ -430,7 +434,7 @@ class TaskEngine:
                 try:
                     await status_callback(device_id, task.id, task.status)
                 except Exception:
-                    pass
+                    logger.debug("状态回调失败 (终态)", exc_info=True)
             ok = True
         finally:
             if ok:
@@ -456,6 +460,7 @@ class TaskEngine:
             try:
                 process.kill()
             except OSError:
+                # 子进程可能已自然退出，kill 报 OSError 属预期，忽略即可
                 pass
 
         # 2. 在 runner 清理前捕获当前任务引用
@@ -468,6 +473,7 @@ class TaskEngine:
             try:
                 await running_task
             except (asyncio.CancelledError, Exception):
+                # 取消/等待 runner 期间的预期中断或异常，均在此容错
                 pass
             self._running[device_id] = None
 
@@ -487,7 +493,8 @@ class TaskEngine:
             try:
                 await self.stop_queue(device_id)
             except Exception:
-                pass
+                # 逐个停止设备，单个失败不影响其余设备停止
+                logger.debug("stop_all: stop_queue 失败", exc_info=True)
 
         # 兜底清理任何残留进程
         for device_id in list(self._processes.keys()):
@@ -496,6 +503,7 @@ class TaskEngine:
                 try:
                     process.kill()
                 except OSError:
+                    # 子进程可能已退出，kill 报 OSError 属预期，忽略即可
                     pass
         self._running.clear()
         self._current_task.clear()
@@ -546,7 +554,8 @@ class TaskEngine:
 
             await state_store.on_mutation()
         except Exception:
-            pass
+            # state_store 可能尚未注册（_engine is None），按契约静默；此处本应不触发
+            logger.debug("state_store.on_mutation 失败", exc_info=True)
 
 
 # 全局单例

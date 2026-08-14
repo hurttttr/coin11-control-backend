@@ -13,10 +13,13 @@ watcher 扫描基于 device_manager 的设备缓存（refresh() 驱动），并�
 """
 
 import asyncio
+import logging
 
 from app.services.auto_task_settings import auto_task_settings
 from app.services.device_manager import device_manager
 from app.services.task_engine import task_engine
+
+logger = logging.getLogger(__name__)
 
 # 记录已触发自动任务的设备，避免重复触发（进程生命周期内有效）
 _auto_task_triggered: set[str] = set()
@@ -39,21 +42,21 @@ async def run_auto_tasks(device_id: str):
     _auto_task_triggered.add(device_id)
 
     tasks = auto_task_settings.get_auto_tasks()
-    print(f"[AutoTask] 设备 {device_id} 已连接，检查自动任务: {tasks}")
+    logger.info(f"[AutoTask] 设备 {device_id} 已连接，检查自动任务: {tasks}")
     if not tasks:
-        print("[AutoTask] 无自动任务配置，跳过")
+        logger.info("[AutoTask] 无自动任务配置，跳过")
         return
     enqueued = 0
     for script_name in tasks:
         try:
             await task_engine.enqueue(device_id, script_name)
             enqueued += 1
-            print(f"[AutoTask] ✅ 自动入队 {script_name} → {device_id}")
+            logger.info(f"[AutoTask] ✅ 自动入队 {script_name} → {device_id}")
         except ValueError as e:
-            print(f"[AutoTask] ❌ 入队失败 {script_name} → {device_id}: {e}")
+            logger.warning(f"[AutoTask] ❌ 入队失败 {script_name} → {device_id}: {e}")
 
     if enqueued == 0:
-        print("[AutoTask] 没有成功入队的任务，跳过启动队列")
+        logger.info("[AutoTask] 没有成功入队的任务，跳过启动队列")
         return
 
     # 启动队列
@@ -62,11 +65,11 @@ async def run_auto_tasks(device_id: str):
     try:
         ok = await task_engine.start_queue_full(device_id)
         if ok:
-            print(f"[AutoTask] ✅ 队列已启动 → {device_id}")
+            logger.info(f"[AutoTask] ✅ 队列已启动 → {device_id}")
         else:
-            print(f"[AutoTask] ⚠️ 队列已在运行中 → {device_id}")
+            logger.warning(f"[AutoTask] ⚠️ 队列已在运行中 → {device_id}")
     except Exception as e:
-        print(f"[AutoTask] ❌ 启动队列失败 → {device_id}: {e}")
+        logger.error(f"[AutoTask] ❌ 启动队列失败 → {device_id}: {e}")
 
 
 class AutoTaskWatcher:
@@ -87,7 +90,7 @@ class AutoTaskWatcher:
         if self._task is not None:
             return
         self._task = asyncio.create_task(self._loop(), name="auto-task-watcher")
-        print(f"[AutoTaskWatcher] 后台设备监视已启动 (interval={self.interval}s)")
+        logger.info(f"[AutoTaskWatcher] 后台设备监视已启动 (interval={self.interval}s)")
 
     async def stop(self) -> None:
         """停止后台监视循环（幂等）"""
@@ -98,8 +101,8 @@ class AutoTaskWatcher:
         try:
             await task
         except asyncio.CancelledError:
-            pass
-        print("[AutoTaskWatcher] 后台设备监视已停止")
+            pass  # 取消路径的预期中断，无需日志
+        logger.info("[AutoTaskWatcher] 后台设备监视已停止")
 
     async def _scan_once(self) -> None:
         """
@@ -132,7 +135,7 @@ class AutoTaskWatcher:
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                print(f"[AutoTaskWatcher] 扫描失败: {e}")
+                logger.error(f"[AutoTaskWatcher] 扫描失败: {e}")
             await asyncio.sleep(self.interval)
 
 

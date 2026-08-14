@@ -1,7 +1,7 @@
 """
 任务队列管理端点
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException
 
 from app.schemas.device import TaskCreateRequest, QueueReorderRequest
 from app.services.task_engine import task_engine
