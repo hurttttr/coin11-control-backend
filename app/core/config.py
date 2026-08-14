@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # WebSocket 鉴权 Token（本地单用户场景用简单 token）
     WS_AUTH_TOKEN: str = "coin11-control-token"
 
+    # HTTP API 鉴权 Token（环境变量 AUTH_TOKEN，默认空=不启用鉴权中间件）
+    AUTH_TOKEN: str = ""
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
