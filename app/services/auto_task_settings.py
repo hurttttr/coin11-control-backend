@@ -6,7 +6,11 @@
 import json
 import os
 
-SETTINGS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "auto_task_settings.json")
+# 配置文件路径（可用环境变量覆盖，便于测试隔离；默认: 项目根目录/auto_task_settings.json）
+SETTINGS_FILE = os.environ.get(
+    "AUTO_TASK_SETTINGS_FILE",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "auto_task_settings.json"),
+)
 
 
 class AutoTaskSettings:

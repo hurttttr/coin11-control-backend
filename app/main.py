@@ -22,6 +22,7 @@ from app.services.repo_manager import RepoManager, repo_manager as global_repo_m
 from app.services.websocket_manager import ws_manager
 from app.services.screen_capture import screen_capture
 from app.services.task_engine import task_engine
+from app.services.auto_task_runner import auto_task_watcher
 settings = get_settings()
 
 
@@ -70,9 +71,13 @@ async def lifespan(app: FastAPI):
     app.state.adb_available = adb_ok
     app.state.coin11_tb_ready = clone_ok
 
+    # 启动后台设备监视：设备上线自动触发任务，不依赖前端轮询/网页打开
+    await auto_task_watcher.start()
+
     yield
 
-    # 关闭时: 清理所有截图流
+    # 关闭时: 停止后台监视 + 清理所有截图流
+    await auto_task_watcher.stop()
     for serial in list(screen_capture.active_streams):
         await screen_capture.stop_stream(serial)
     print("Coin11-TB Control API 正在关闭...")

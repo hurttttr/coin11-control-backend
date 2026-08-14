@@ -11,7 +11,7 @@ from app.services.device_manager import device_manager
 from app.services.screen_capture import screen_capture
 from app.services.task_engine import task_engine
 from app.services.auto_task_settings import auto_task_settings
-from app.services.websocket_manager import ws_manager
+from app.services.auto_task_runner import run_auto_tasks, is_triggered
 
 router = APIRouter(prefix="/devices", tags=["devices"])
 
@@ -21,14 +21,13 @@ async def list_devices():
     """获取所有已连接的 ADB 设备，新设备自动触发自动任务"""
     devices = await device_manager.get_devices()
     print(f"[list_devices] 发现 {len(devices)} 台设备: {[d['serial'] for d in devices]}")
-    # 对轮询发现的新设备触发自动任务
+    # 对轮询发现的新设备触发自动任务（去重由 auto_task_runner 保证）
     if auto_task_settings.has_auto_tasks():
-        print(f"[list_devices] 自动任务已配置: {auto_task_settings.get_auto_tasks()}")
         for d in devices:
             serial = d["serial"]
-            if serial not in _auto_task_triggered:
+            if not is_triggered(serial):
                 print(f"[list_devices] 新设备 {serial}，触发自动任务")
-                await _run_auto_tasks(serial)
+                await run_auto_tasks(serial)
             else:
                 print(f"[list_devices] 设备 {serial} 已触发过，跳过")
     else:
@@ -42,7 +41,7 @@ async def connect_device(req: DeviceConnectRequest):
     result = await device_manager.connect_device(req.address)
     # 连接成功后自动触发自动任务
     if result.get("success") and auto_task_settings.has_auto_tasks():
-        await _run_auto_tasks(req.address)
+        await run_auto_tasks(req.address)
     return result
 
 
@@ -93,54 +92,3 @@ async def get_screenshot(serial: str):
 async def get_device_queue(serial: str):
     """获取设备任务队列"""
     return await task_engine.get_queue(serial)
-
-
-# ---------- 自动任务触发器 ----------
-
-# 记录已触发自动任务的设备，避免重复触发
-_auto_task_triggered: set[str] = set()
-
-
-async def _run_auto_tasks(device_id: str):
-    """设备连接后自动入队并启动已配置的任务"""
-    if device_id in _auto_task_triggered:
-        return
-    _auto_task_triggered.add(device_id)
-
-    tasks = auto_task_settings.get_auto_tasks()
-    print(f"[AutoTask] 设备 {device_id} 已连接，检查自动任务: {tasks}")
-    if not tasks:
-        print("[AutoTask] 无自动任务配置，跳过")
-        return
-    enqueued = 0
-    for script_name in tasks:
-        try:
-            await task_engine.enqueue(device_id, script_name)
-            enqueued += 1
-            print(f"[AutoTask] ✅ 自动入队 {script_name} → {device_id}")
-        except ValueError as e:
-            print(f"[AutoTask] ❌ 入队失败 {script_name} → {device_id}: {e}")
-
-    if enqueued == 0:
-        print("[AutoTask] 没有成功入队的任务，跳过启动队列")
-        return
-
-    # 启动队列
-    try:
-        if device_id not in screen_capture.active_streams:
-            await screen_capture.start_stream(
-                device_id,
-                callback=lambda img: ws_manager.send_screenshot(device_id, img),
-                fps=2.0,
-            )
-
-        async def log_cb(did: str, tid: str, text: str):
-            await ws_manager.send_log(did, text, task_id=tid)
-
-        async def status_cb(did: str, tid: str, s: str):
-            await ws_manager.send_status(did, tid, s)
-
-        await task_engine.start_queue(device_id, log_callback=log_cb, status_callback=status_cb)
-        print(f"[AutoTask] ✅ 队列已启动 → {device_id}")
-    except Exception as e:
-        print(f"[AutoTask] ❌ 启动队列失败 → {device_id}: {e}")
