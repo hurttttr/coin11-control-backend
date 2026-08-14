@@ -13,6 +13,14 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "aiofiles>=24.0.0",
     "retry>=0.9.2",
+    # coin11-tb 自动化脚本运行依赖（脚本由后端 venv 的 python 执行，utils.py 直接导入）
+    "torch>=2.0",
+    "opencv-python>=4.8",
+    "numpy>=1.26",
+    "ddddocr>=1.4",
+    "easyocr>=1.7",
+    "uiautomator2>=3.0",
+    "pillow>=10.0",
 ]
 
 [project.optional-dependencies]

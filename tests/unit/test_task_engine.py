@@ -315,10 +315,12 @@ async def test_start_queue_full(monkeypatch):
         assert started is True
         assert called["start"] == 1
 
-        # 已运行时返回 False
-        assert await engine.start_queue_full("dev1") is False
+        # 已在运行时幂等成功（不再返回 False/报 400）
+        assert await engine.start_queue_full("dev1") is True
 
         await engine.stop_queue("dev1")
+        # 停止后 _running 清空，可再次启动
+        assert await engine.start_queue_full("dev1") is True
     finally:
         if engine is not None:
             await engine.stop_all()

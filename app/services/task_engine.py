@@ -254,11 +254,12 @@ class TaskEngine:
         - log_callback: 日志行回调 async (device_id, task_id, text)
         - status_callback: 状态变更回调 async (device_id, task_id, status)
 
-        start_queue 语义：已在运行时返回 False；停止后可重新启动。
-        runner 退出条件：被取消（stop_queue / stop_all）；任务跑完后保持存活等待新任务。
+        start_queue 语义：已在运行时返回 True（幂等成功，避免前端重复点击
+        "开始"报错——自动任务可能已由 watcher 启动）；停止（stop_queue）后
+        可重新启动。runner 退出条件：被取消（stop_queue / stop_all）。
         """
         if self._running.get(device_id) is not None:
-            return False  # 已在运行
+            return True  # 已在运行：幂等成功
 
         async def runner():
             """后台执行器 — while 循环 + Condition 持续消费队列"""

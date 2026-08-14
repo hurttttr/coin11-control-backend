@@ -181,6 +181,14 @@ docker run -d --name coin11-control -p 8000:8000 ghcr.io/hurttttr/coin11-control
 
 ## 📦 版本发布说明
 
+### v0.3.2 (2026-08-14)
+
+> 🐛 修复：队列启动幂等 + 脚本运行依赖补声明
+
+**修复：**
+- 🔘 **启动按钮幂等** — 自动任务已由 watcher 启动时，前端再点"开始"不再报 400"队列已在运行中"，返回成功（队列确实在运行）
+- 📦 **脚本运行依赖补声明** — coin11-tb 脚本直接依赖 `torch`/`opencv-python`/`ddddocr`/`easyocr`/`uiautomator2` 等，此前仅靠传递依赖满足；现显式声明进 `pyproject.toml` 与 `requirements.txt`，避免 `uv sync` 后脚本 import 失败
+
 ### v0.3.1 (2026-08-14)
 
 > 🔧 工程化细节加固：日志、启动速度、依赖与部署
