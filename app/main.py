@@ -17,8 +17,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.router import router as v1_router
+from app.core.auth import AuthMiddleware
 from app.core.config import get_settings
-from app.services.repo_manager import RepoManager, repo_manager as global_repo_manager
+from app.services import state_store
+from app.services.repo_manager import RepoManager
 from app.services.websocket_manager import ws_manager
 from app.services.screen_capture import screen_capture
 from app.services.task_engine import task_engine
@@ -71,6 +73,11 @@ async def lifespan(app: FastAPI):
     app.state.adb_available = adb_ok
     app.state.coin11_tb_ready = clone_ok
 
+    # 任务状态持久化接线：注册引擎 → 清理遗留 launcher → 恢复上次未完成任务
+    state_store.init(task_engine)
+    await state_store.cleanup_orphans()
+    await state_store.restore_state()
+
     # 启动后台设备监视：设备上线自动触发任务，不依赖前端轮询/网页打开
     await auto_task_watcher.start()
 
@@ -80,6 +87,9 @@ async def lifespan(app: FastAPI):
     await auto_task_watcher.stop()
     for serial in list(screen_capture.active_streams):
         await screen_capture.stop_stream(serial)
+    # 停止所有任务并把最终状态持久化到磁盘
+    await task_engine.stop_all()
+    await state_store.save_now()
     print("Coin11-TB Control API 正在关闭...")
     print("资源已清理")
 
@@ -99,6 +109,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# API 鉴权中间件（AUTH_TOKEN 为空时全部放行，默认不影响现有前端）
+app.add_middleware(AuthMiddleware, auth_token=settings.AUTH_TOKEN)
 
 # 注册路由
 app.include_router(v1_router)
