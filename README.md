@@ -4,7 +4,7 @@
 
 **多设备安卓自动化任务控制平台**
 
-[![Version](https://img.shields.io/badge/版本-v0.2.0-00f0ff?style=flat-square)](https://github.com/hurttttr/coin11-control-backend/releases)
+[![Version](https://img.shields.io/badge/版本-v0.2.1-00f0ff?style=flat-square)](https://github.com/hurttttr/coin11-control-backend/releases)
 [![Python](https://img.shields.io/badge/Python-3.12+-3776AB?style=flat-square&logo=python&logoColor=white)]()
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi&logoColor=white)]()
 [![Vue 3](https://img.shields.io/badge/Frontend-Vue_3-4FC08D?style=flat-square&logo=vue.js&logoColor=white)]()
@@ -181,6 +181,17 @@ docker run -d --name coin11-control -p 8000:8000 ghcr.io/hurttttr/coin11-control
 
 ## 📦 版本发布说明
 
+### v0.2.1 (2026-08-14)
+
+> 🐛 修复：设备自动任务不再依赖打开网页，后端启动即自动工作
+
+**修复：**
+- 🤖 **后台设备监视** — 新增 `AutoTaskWatcher` 后台循环，后端启动后每 5 秒自动扫描 ADB 设备，新设备上线自动入队并启动已配置的自动任务，**无需打开网页 / 前端轮询**
+- 🧪 新增无头启动回归测试（`tests/integration/test_headless_auto_task.py`），防止自动任务重新退回"必须开网页才执行"
+
+**增强：**
+- 🗂️ 自动任务触发逻辑抽离为独立服务 `app/services/auto_task_runner.py`，HTTP 触发与后台触发共用同一去重逻辑
+
 ### v0.2.0 (2026-07-23)
 
 > 🎉 添加设备连接自动运行任务 + ADB 无线配对
@@ -221,6 +232,7 @@ coin11-control-backend/
 │   ├── services/
 │   │   ├── device_manager.py   # ADB 设备发现
 │   │   ├── task_engine.py      # 任务队列引擎
+│   │   ├── auto_task_runner.py # 自动任务触发 + 后台设备监视
 │   │   ├── screen_capture.py   # 截图流服务
 │   │   ├── websocket_manager.py
 │   │   ├── auto_task_settings.py  # 自动任务持久化
