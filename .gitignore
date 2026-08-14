@@ -8,7 +8,6 @@ build/
 .venv/
 env/
 venv/
-uv.lock
 coin11_tb/
 .test-tmp/
 .pytest_cache/
