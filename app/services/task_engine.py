@@ -138,6 +138,30 @@ class TaskEngine:
         print(f"[DEBUG get_queue] device_id={device_id!r} -> {len(q)} tasks, returning {len(result)} items")
         return result
 
+    async def get_replay_logs(self, device_id: str) -> list[dict]:
+        """
+        导出设备队列的历史日志（用于 WS 连接建立时回放）。
+
+        自动任务由后台 watcher 触发，可能在前端连接前就已产生日志；
+        这些日志通过本方法按任务导出，配合前端按 task_id 去重注入日志通道。
+
+        返回按队列顺序排列的 [{task_id, script_name, lines:[text,...]}, ...]，
+        每任务仅导出 log_lines 的最近 200 行，与 to_dict().log 保持一致。
+        """
+        q = self._queues.get(device_id)
+        if not q:
+            return []
+        result = []
+        for t in q:
+            if not t.log_lines:
+                continue
+            result.append({
+                "task_id": t.id,
+                "script_name": t.script_name,
+                "lines": list(t.log_lines[-200:]),
+            })
+        return result
+
     # ---------- 队列执行 ----------
 
     async def start_queue(

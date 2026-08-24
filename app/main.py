@@ -131,6 +131,15 @@ async def device_websocket(websocket: WebSocket, device_id: str, token: str = Qu
 
     await ws_manager.connect(device_id, websocket)
 
+    # 回放该设备队列的历史日志（自动任务可能在前端连接前已产生日志）
+    # 回放消息带 task_id 标记，前端据此识别历史日志并去重
+    try:
+        replay = await task_engine.get_replay_logs(device_id)
+        if replay:
+            await ws_manager.send_replay(device_id, replay)
+    except Exception as e:
+        logger.warning(f"回放 {device_id} 历史日志失败: {e}")
+
     # 自动启动截图流（首次连接时启动）
     if device_id not in screen_capture.active_streams:
         await screen_capture.start_stream(

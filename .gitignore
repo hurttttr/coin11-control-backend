@@ -15,3 +15,5 @@ coin11_tb/
 .mypy_cache/
 # 运行时生成的自动任务配置（本机用户选择，不入库）
 auto_task_settings.json
+# 运行时任务队列状态（含本机路径，不入库）
+task_state.json

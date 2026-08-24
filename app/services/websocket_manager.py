@@ -68,6 +68,21 @@ class ConnectionManager:
             text,
         )
 
+    async def send_replay(self, device_id: str, replay: list[dict]) -> None:
+        """
+        回放该设备队列的历史日志（WS 连接建立时调用）。
+
+        每条日志的 data 为 JSON 字符串 {"task_id":..., "text":...}，
+        供前端按 task_id 识别历史日志并去重（避免与 fetchQueue 注入重复）。
+        """
+        if not replay:
+            return
+        for task in replay:
+            task_id = task.get("task_id", "")
+            for line in task.get("lines", []):
+                data = json.dumps({"task_id": task_id, "text": line})
+                await self.broadcast(device_id, "log", data)
+
     async def send_status(
         self, device_id: str, task_id: str, status: str
     ) -> None:
