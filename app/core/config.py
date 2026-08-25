@@ -1,7 +1,5 @@
-import json
 import os
 from functools import lru_cache
-from typing import Optional
 
 from pydantic_settings import BaseSettings
 
@@ -23,22 +21,28 @@ class Settings(BaseSettings):
     # 服务监听端口
     PORT: int = 8000
 
-    # CORS 允许的来源
+    # CORS 允许的来源（JSON 数组字符串；pydantic-settings 对 list[str] 自动做 JSON 解析）
     CORS_ORIGINS: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ]
 
-    # DeepSeek API Key（可选，用于调试）
-    DEEPSEEK_API_KEY: str | None = None
-
     # WebSocket 鉴权 Token（本地单用户场景用简单 token）
+    # 注意：前端 submodule（frontend/src/stores/websocket.ts）当前硬编码了默认值，
+    # 修改此默认值会导致前端无法连接；生产环境应通过 .env 覆盖为强随机值。
     WS_AUTH_TOKEN: str = "coin11-control-token"
+
+    # API 鉴权 Token（可选，默认关闭以保持向后兼容）
+    # 设置后：所有 /api/* 请求必须携带 Authorization: Bearer <token> 或 X-API-Token 头，
+    # /api/health 始终豁免（供健康检查使用）。监听非回环地址时强烈建议设置。
+    API_AUTH_TOKEN: str | None = None
+
+    # 日志级别（DEBUG / INFO / WARNING / ERROR）
+    LOG_LEVEL: str = "INFO"
 
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
-        # 允许 CORS_ORIGINS 从 JSON 字符串解析
         "extra": "ignore",
     }
 
@@ -54,16 +58,6 @@ class Settings(BaseSettings):
         # 默认：后端项目根目录下的 coin11_tb/
         backend_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         return os.path.join(backend_root, "coin11_tb")
-
-    @classmethod
-    def parse_cors_origins(cls, v: str) -> list[str]:
-        """支持从环境变量读取 JSON 数组字符串"""
-        if isinstance(v, str):
-            try:
-                return json.loads(v)
-            except (json.JSONDecodeError, TypeError):
-                return [v]
-        return v
 
 
 @lru_cache
