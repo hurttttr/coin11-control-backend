@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------- 后端测试 ----------
+  backend-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout (含 frontend submodule)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          # 与 Dockerfile 的基础镜像保持一致（python:3.12-slim）
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run pytest
+        run: pytest -q
+
+  # ---------- 前端测试 ----------
+  frontend-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout (含 frontend submodule)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run vitest
+        working-directory: frontend
+        # 只跑测试，不跑 npm run build：build 会执行 vue-tsc，
+        # 而 frontend __tests__ 存在类型错误导致 vue-tsc 当前必然失败（见 Dockerfile 注释）
+        run: npx vitest run
+
+  # ---------- 静态检查（后端，基线） ----------
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dev dependencies (ruff/mypy)
+        run: pip install ruff mypy
+
+      # 当前为基线阶段：lint 存在存量问题（并行子代理仍在改动 app/），
+      # 因此 continue-on-error 只记录基线，不阻塞合并。
+      - name: ruff check (baseline)
+        continue-on-error: true
+        run: ruff check . --output-format=github
+
+      - name: mypy check (baseline)
+        continue-on-error: true
+        run: mypy app

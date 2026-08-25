@@ -1,41 +1,58 @@
 [project]
 name = "coin11-control-backend"
-version = "0.2.1"
+version = "0.3.0"
 description = "Coin11-TB 网页控制平台后端 API"
 readme = "README.md"
 requires-python = ">=3.11"
+# 单一真相来源：仅保留 app/ 代码真实 import 的依赖。
+# 已核实（grep 全仓库，排除 .venv 与 coin11_tb 克隆）：
+#   gitpython / aiofiles / retry / construct / adbutils 均无任何 import，已从依赖中移除；
+#   测试依赖 pytest / pytest-asyncio / httpx 移至 dev 组，不进生产镜像。
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.34.0",
     "pydantic-settings>=2.7.0",
     "websockets>=14.0",
-    "gitpython>=3.1.0",
     "python-dotenv>=1.0.0",
-    "aiofiles>=24.0.0",
-    "adbutils>=2.12.0",
-    "construct>=2.10.70",
-    "retry>=0.9.2",
 ]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.3.0",
-    "pytest-asyncio>=0.25.0",
-    "httpx>=0.28.0",
-]
-
-[tool.uv]
 
 [dependency-groups]
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.25.0",
     "httpx>=0.28.0",
+    "ruff>=0.9.0",
+    "mypy>=1.14.0",
 ]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+# ruff: 渐进式规则集（不追求 strict），行宽 100
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle 错误
+    "W",   # pycodestyle 警告
+    "F",   # pyflakes（未使用 import/变量等）
+    "I",   # isort（import 排序）
+    "UP",  # pyupgrade（现代语法）
+    "B",   # bugbear（常见坑）
+]
+ignore = [
+    "E501",  # 长行由 formatter 处理，不阻塞
+]
+
+# mypy: 渐进式 —— 先增量 + 宽松入口，避免全红；后续再逐步收紧到 strict
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+check_untyped_defs = false
+no_implicit_optional = true
 
 [[tool.uv.index]]
 name = "pypi"

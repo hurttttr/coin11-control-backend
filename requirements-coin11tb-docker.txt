@@ -1,0 +1,17 @@
+# coin11-tb 脚本运行时依赖（Docker 镜像专用）
+#
+# ⚠️ 这些不是"可选的锦上添花" —— coin11_tb/utils.py 在【模块顶层】就 import 了
+#    cv2 / numpy / ddddocr / torch / easyocr / PIL / uiautomator2，
+#    并且在 import 期就执行 easyocr.Reader(['ch_sim','en'])。
+#    而全部 14 个任务脚本都 import utils，launcher 也 import utils。
+#    因此少装任何一个，容器内【所有】脚本都会在 import 阶段 ImportError 失败。
+#
+# 版本与上游 coin11_tb/requirements.txt（2026-08）对齐。
+uiautodev==0.14.0
+uiautomator2==3.5.2
+pytesseract==0.3.13
+opencv-python==4.13.0.92
+easyocr==1.7.2
+ddddocr==1.5.6
+Pillow>=10.0.0
+# torch 由 Dockerfile 单独用 CPU-only 源安装（避免拉入 CUDA 轮子，体积差 ~2GB）

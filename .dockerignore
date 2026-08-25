@@ -7,6 +7,8 @@ venv/
 *.egg
 
 # Node
+frontend/node_modules/
+frontend/dist/
 node_modules/
 .cache/
 
@@ -22,11 +24,21 @@ node_modules/
 .DS_Store
 Thumbs.db
 
-# Environment
+# 环境与密钥
 .env
 *.local
 
-# Docker
+# Docker 自身
 .dockerignore
 Dockerfile
 docker-compose.yml
+.github/
+
+# 运行时状态文件（不入镜像；容器内统一放 /app/data 卷）
+coin11_tb/
+task_state.json
+auto_task_settings.json
+.test-tmp/
+.pytest_cache/
+.mypy_cache/
+frontend-dist/

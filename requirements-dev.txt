@@ -1,0 +1,8 @@
+# 开发/测试依赖（不进生产镜像）
+# 与 pyproject.toml 的 dev 依赖组保持一致。
+-r requirements.txt
+pytest>=8.3.0
+pytest-asyncio>=0.25.0
+httpx>=0.28.0
+ruff>=0.9.0
+mypy>=1.14.0

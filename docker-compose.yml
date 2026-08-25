@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   server:
     build:
@@ -12,5 +10,20 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
       - ADB_PATH=adb
-      - CORS_ORIGINS=["*"]
+      # 容器内只能走 WiFi ADB（无法透传 USB 设备）；ADB_PATH=adb 即可
+      # 覆盖 CORS 白名单与 WS 鉴权令牌：切勿使用 "*" 或应用弱默认值
+      # - CORS_ORIGINS=["http://localhost:5173","http://127.0.0.1:5173"]
+      # - WS_AUTH_TOKEN=请替换为强随机值
+    volumes:
+      # 持久化：coin11_tb 克隆 + 自动任务配置等运行时数据，重建容器不丢失
+      - coin11-data:/app/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=4).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+volumes:
+  coin11-data:

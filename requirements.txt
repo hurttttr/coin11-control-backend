@@ -1,11 +1,9 @@
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-pydantic-settings==2.7.0
-websockets==14.1
-gitpython==3.1.43
-python-dotenv==1.0.1
-aiofiles==24.1.0
-retry==0.9.2
-pytest==8.3.4
-pytest-asyncio==0.25.0
-httpx==0.28.1
+# 运行时依赖（后端 API / 任务引擎）
+# 单一真相来源: pyproject.toml 的 [project.dependencies]
+# 本文件由它导出，供 Docker 镜像与 CI 使用 —— 请保持两者一致。
+# 仅包含 app/ 代码真实 import 的依赖；测试依赖见 requirements-dev.txt。
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+pydantic-settings>=2.7.0
+websockets>=14.0
+python-dotenv>=1.0.0

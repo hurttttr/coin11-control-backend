@@ -9,8 +9,37 @@ env:
   DOCKER_IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
+  # ---------- 发布前测试闸门 ----------
+  # 必须在本 workflow 内定义：needs 只能引用【同一 workflow】里的 job，
+  # 且不支持表达式求值，无法条件化引用 ci.yml 的 job。
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run pytest
+        run: pytest -q
+
   docker:
     runs-on: ubuntu-latest
+    timeout-minutes: 60          # 含 torch/easyocr 安装，构建较慢
+    needs: test                  # 测试不过不发布镜像
     permissions:
       contents: read
       packages: write
@@ -40,6 +69,7 @@ jobs:
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix=,suffix=,format=short
 
       - name: Build and push
