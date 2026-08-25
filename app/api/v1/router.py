@@ -1,17 +1,21 @@
 """
 API v1 路由聚合
 """
-from fastapi import APIRouter
+import logging
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
 from app.api.v1.devices import router as devices_router
 from app.api.v1.tasks import router as tasks_router
 from app.api.v1.update import router as update_router
 from app.services.task_engine import task_engine
 from app.services.device_manager import device_manager
-from app.services.websocket_manager import ws_manager
-from app.services.screen_capture import screen_capture
 from app.schemas.device import BatchTaskCreateRequest, BatchDeviceRequest
 from app.services.auto_task_settings import auto_task_settings
+from app.services.queue_control import start_device_queue
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
 
@@ -70,6 +74,12 @@ async def batch_enqueue_task(req: BatchTaskCreateRequest):
 # ---------- 自动任务设置 ----------
 
 
+class AutoTasksUpdateRequest(BaseModel):
+    """自动任务脚本列表更新请求体（校验字段类型）"""
+
+    auto_tasks: list[str] = Field(..., description="自动运行脚本名列表")
+
+
 @router.get("/settings/auto-tasks")
 async def get_auto_tasks():
     """获取自动运行任务脚本列表"""
@@ -77,14 +87,11 @@ async def get_auto_tasks():
 
 
 @router.put("/settings/auto-tasks")
-async def set_auto_tasks(body: dict):
+async def set_auto_tasks(body: AutoTasksUpdateRequest):
     """设置自动运行任务脚本列表"""
-    tasks = body.get("auto_tasks", [])
-    if not isinstance(tasks, list):
-        return {"success": False, "error": "auto_tasks 必须为数组"}
-    auto_task_settings.set_auto_tasks(tasks)
-    print(f"[Settings] 自动任务已更新: {tasks}")
-    return {"success": True, "auto_tasks": tasks}
+    auto_task_settings.set_auto_tasks(body.auto_tasks)
+    logger.info("自动任务已更新: %s", body.auto_tasks)
+    return {"success": True, "auto_tasks": body.auto_tasks}
 
 
 @router.post("/tasks/batch-start")
@@ -94,25 +101,7 @@ async def batch_start_queues(req: BatchDeviceRequest):
     errors = []
     for device_id in req.device_ids:
         try:
-            # 确保截图流正在运行
-            if device_id not in screen_capture.active_streams:
-                await screen_capture.start_stream(
-                    device_id,
-                    callback=lambda img: ws_manager.send_screenshot(device_id, img),
-                    fps=2.0,
-                )
-
-            async def log_callback(did: str, tid: str, text: str):
-                await ws_manager.send_log(did, text, task_id=tid)
-
-            async def status_callback(did: str, tid: str, status: str):
-                await ws_manager.send_status(did, tid, status)
-
-            started = await task_engine.start_queue(
-                device_id,
-                log_callback=log_callback,
-                status_callback=status_callback,
-            )
+            started = await start_device_queue(device_id)
             if started:
                 results.append({"device_id": device_id, "status": "started"})
             else:

@@ -1,12 +1,11 @@
 """
 任务队列管理端点
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException
 
 from app.schemas.device import TaskCreateRequest, QueueReorderRequest
 from app.services.task_engine import task_engine
-from app.services.websocket_manager import ws_manager
-from app.services.screen_capture import screen_capture
+from app.services.queue_control import start_device_queue
 
 router = APIRouter(prefix="/devices/{device_id}/queue", tags=["tasks"])
 
@@ -50,28 +49,9 @@ async def reorder_queue(device_id: str, req: QueueReorderRequest):
 async def start_queue(device_id: str):
     """
     启动队列执行
-    自动集成 WebSocket 日志推送、状态推送和截图流
+    自动集成 WebSocket 日志推送、状态推送和截图流（统一由 queue_control 负责）
     """
-    # 确保截图流正在运行（防止被 stop_queue 或意外中断后未恢复）
-    if device_id not in screen_capture.active_streams:
-        await screen_capture.start_stream(
-            device_id,
-            callback=lambda img: ws_manager.send_screenshot(device_id, img),
-            fps=2.0,
-        )
-
-    # 构建回调闭包
-    async def log_callback(did: str, tid: str, text: str):
-        await ws_manager.send_log(did, text, task_id=tid)
-
-    async def status_callback(did: str, tid: str, status: str):
-        await ws_manager.send_status(did, tid, status)
-
-    started = await task_engine.start_queue(
-        device_id,
-        log_callback=log_callback,
-        status_callback=status_callback,
-    )
+    started = await start_device_queue(device_id)
     if not started:
         raise HTTPException(status_code=400, detail="队列已在运行中")
 
