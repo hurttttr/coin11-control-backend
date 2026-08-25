@@ -1,0 +1,40 @@
+name: Sync frontend submodule
+
+on:
+  schedule:
+    # 每小时检查一次前端是否更新
+    - cron: '0 * * * *'
+  workflow_dispatch: {} # 也可手动触发
+
+concurrency:
+  group: sync-frontend-submodule
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出后端仓库（含 submodule）
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: 将 frontend submodule 更新到远程 master 最新
+        run: |
+          git submodule update --remote frontend
+
+      - name: 有变更则提交并推送
+        run: |
+          if git diff --cached --quiet; then
+            echo "::notice:: frontend submodule 已是最新，无需更新"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            newref="$(git -C frontend rev-parse HEAD)"
+            git commit -m "chore: 自动同步 frontend submodule 引用到 ${newref:0:7}"
+            git push origin HEAD:master
+            echo "::notice:: 已同步 frontend submodule 引用到 ${newref:0:7}"
+          fi
