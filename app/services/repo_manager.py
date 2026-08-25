@@ -1,9 +1,17 @@
-"""Coin11-TB 仓库管理服务 — 自动 clone / 更新检测 / pull"""
+"""Coin11-TB 仓库管理服务 — 自动 clone / 更新检测 / pull
+
+git 子进程操作统一走 app.services.git_ops，避免与 version_manager 重复实现。
+"""
 
 import asyncio
+import logging
 import os
 import subprocess
 from datetime import datetime
+
+from app.services import git_ops
+
+logger = logging.getLogger(__name__)
 
 
 class RepoManager:
@@ -18,28 +26,33 @@ class RepoManager:
 
     async def ensure_repo(self) -> bool:
         """
-        确保仓库存在且是最新代码。
-        - 如果目录不存在 → git clone
-        - 如果目录存在且是 git 仓库 → git fetch + 检查更新
-        - 如果目录存在但不是 git 仓库 → 报错
+        确保仓库目录存在（启动路径保持快速，不在此处做网络请求）：
+
+        - 目录不存在 → git clone
+        - 目录已存在且是 git 仓库 → 直接标记 ready 返回
+        - 目录已存在但不是 git 仓库 → 报错
+
+        注意: 这里**不做** git fetch / 更新检查（旧 docstring 声称会 fetch，
+        实际从未执行）。更新检测与拉取由 check_update() / pull_update()
+        显式完成（前端调用 /api/update/* 时触发），避免在 lifespan 启动时
+        因网络阻塞拖慢整个后端。
         """
         if os.path.isdir(self.repo_path):
-            git_dir = os.path.join(self.repo_path, ".git")
-            if os.path.isdir(git_dir):
-                # 仓库已存在，git fetch 检查更新
+            if git_ops.is_git_repo(self.repo_path):
+                # 仓库已存在
                 self._status = "ready"
-                print(f"[RepoManager] 仓库已存在: {self.repo_path}")
+                logger.info("[RepoManager] 仓库已存在: %s", self.repo_path)
                 return True
             else:
                 # 目录存在但不是 git 仓库
                 self._status = "error"
                 self._error_msg = f"路径 {self.repo_path} 已存在但不是 Git 仓库"
-                print(f"[RepoManager] {self._error_msg}")
+                logger.warning("[RepoManager] %s", self._error_msg)
                 return False
 
         # 目录不存在，clone
         self._status = "cloning"
-        print(f"[RepoManager] 正在克隆 coin11-tb 仓库 ({self.repo_url}) ...")
+        logger.info("[RepoManager] 正在克隆 coin11-tb 仓库 (%s) ...", self.repo_url)
 
         def _clone():
             result = subprocess.run(
@@ -53,11 +66,11 @@ class RepoManager:
         success, err = await asyncio.to_thread(_clone)
         if success:
             self._status = "ready"
-            print(f"[RepoManager] coin11-tb 仓库克隆成功: {self.repo_path}")
+            logger.info("[RepoManager] coin11-tb 仓库克隆成功: %s", self.repo_path)
         else:
             self._status = "error"
             self._error_msg = f"克隆失败: {err}"
-            print(f"[RepoManager] {self._error_msg}")
+            logger.warning("[RepoManager] %s", self._error_msg)
         return success
 
     async def check_update(self) -> dict:
@@ -73,89 +86,48 @@ class RepoManager:
             "commit_messages": [],
         }
 
-        git_dir = os.path.join(self.repo_path, ".git")
-        if not os.path.isdir(git_dir):
+        if not git_ops.is_git_repo(self.repo_path):
             return result
 
-        def _fetch():
-            subprocess.run(
-                ["git", "fetch", "origin", "main"],
-                cwd=self.repo_path,
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
+        # 探测默认分支（main / master 自适应），fetch 允许失败
+        branch = await git_ops.detect_default_branch(self.repo_path)
+        await git_ops.fetch(self.repo_path, branch, timeout=30)
 
-        await asyncio.to_thread(_fetch)
-
-        def _run_git(*args):
-            cmd = ["git"] + list(args)
-            r = subprocess.run(cmd, cwd=self.repo_path, capture_output=True, text=True, timeout=30)
-            return r.stdout.strip(), r.stderr.strip(), r.returncode
-
-        # 获取本地 HEAD
-        stdout_local, _, rc_local = await asyncio.to_thread(_run_git, "rev-parse", "HEAD")
-        current_commit = stdout_local if rc_local == 0 else ""
-
-        # 获取远程 HEAD
-        stdout_remote, _, rc_remote = await asyncio.to_thread(_run_git, "rev-parse", "origin/main")
-        latest_commit = stdout_remote if rc_remote == 0 else current_commit
+        current_commit = await git_ops.get_head_commit(self.repo_path)
+        latest_commit = await git_ops.get_remote_commit(self.repo_path, branch) or current_commit
 
         result["current_commit"] = current_commit
         result["latest_commit"] = latest_commit
 
-        # 计算落后 commit 数
-        if rc_remote == 0 and current_commit and latest_commit:
-            stdout_count, _, rc_count = await asyncio.to_thread(
-                _run_git, "rev-list", "--count", f"{current_commit}..origin/main"
-            )
-            if rc_count == 0 and stdout_count:
-                result["commits_behind"] = int(stdout_count)
-                result["has_update"] = int(stdout_count) > 0
-
-            if result["has_update"]:
-                stdout_log, _, rc_log = await asyncio.to_thread(
-                    _run_git, "log", "--oneline", f"{current_commit}..origin/main"
+        if current_commit and latest_commit:
+            behind = await git_ops.count_commits_behind(self.repo_path, current_commit, branch)
+            result["commits_behind"] = behind
+            result["has_update"] = behind > 0
+            if behind > 0:
+                result["commit_messages"] = await git_ops.list_commit_messages(
+                    self.repo_path, current_commit, branch
                 )
-                if rc_log == 0 and stdout_log:
-                    result["commit_messages"] = stdout_log.splitlines()
 
         self._last_check = datetime.now()
         return result
 
     async def pull_update(self) -> dict:
-        """拉取远程更新"""
-        git_dir = os.path.join(self.repo_path, ".git")
-        if not os.path.isdir(git_dir):
+        """拉取远程更新（分支名自动探测，不再硬编码 main）"""
+        if not git_ops.is_git_repo(self.repo_path):
             return {"success": False, "message": "不是 Git 仓库，无法拉取更新"}
 
-        def _pull():
-            result = subprocess.run(
-                ["git", "pull", "origin", "main"],
-                cwd=self.repo_path,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-            return result.stdout.strip(), result.stderr.strip(), result.returncode
-
-        stdout, stderr, rc = await asyncio.to_thread(_pull)
+        branch = await git_ops.detect_default_branch(self.repo_path)
+        stdout, stderr, rc = await git_ops.pull(self.repo_path, branch, timeout=60)
         if rc != 0:
             return {
                 "success": False,
                 "message": stderr or stdout or "git pull 失败",
             }
 
-        pulled_commits = []
-        for line in stdout.splitlines():
-            line = line.strip()
-            if line.startswith("commit ") or line.startswith("Updating "):
-                pulled_commits.append(line)
-
         return {
             "success": True,
             "message": stdout or "已更新到最新版本",
-            "pulled_commits": pulled_commits,
+            "pulled_commits": git_ops.parse_pulled_commits(stdout),
         }
 
     @property

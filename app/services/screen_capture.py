@@ -6,19 +6,29 @@
 """
 
 import asyncio
+import logging
 import subprocess
 from typing import Callable
 
 from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
+
+# 截图流连续失败阈值：超过后自动停止该设备的流，避免设备掉线时无限刷错误日志
+MAX_CONSECUTIVE_FAILURES = 10
 
 
 class ScreenCapture:
     """设备屏幕截图服务"""
 
     def __init__(self):
-        self.settings = get_settings()
         self._stream_tasks: dict[str, asyncio.Task] = {}
         self._active_serials: set[str] = set()
+
+    @property
+    def settings(self):
+        """每次访问都取当前配置单例（理由同 DeviceManager.settings）"""
+        return get_settings()
 
     @property
     def active_streams(self) -> set[str]:
@@ -66,15 +76,36 @@ class ScreenCapture:
 
         async def loop():
             interval = 1.0 / fps
-            while True:
-                try:
-                    frame = await self.capture_single(serial)
-                    await callback(frame)
-                except asyncio.CancelledError:
-                    break
-                except Exception as e:
-                    print(f"[ScreenCapture] 截图失败 {serial}: {e}")
-                await asyncio.sleep(interval)
+            failures = 0
+            try:
+                while True:
+                    try:
+                        frame = await self.capture_single(serial)
+                        await callback(frame)
+                        failures = 0  # 恢复成功，清零连续失败计数
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as e:
+                        failures += 1
+                        if failures >= MAX_CONSECUTIVE_FAILURES:
+                            logger.error(
+                                "截图流 [%s] 连续失败 %d 次，自动停止",
+                                serial,
+                                failures,
+                            )
+                            break
+                        logger.warning(
+                            "截图失败 [%s]: %s (连续 %d 次)",
+                            serial,
+                            e,
+                            failures,
+                        )
+                    await asyncio.sleep(interval)
+            finally:
+                # 流结束（被 stop_stream 取消或连续失败退出）时清理自身状态，
+                # 避免 _stream_tasks / _active_serials 残留导致 start_stream 误判
+                self._active_serials.discard(serial)
+                self._stream_tasks.pop(serial, None)
 
         self._stream_tasks[serial] = asyncio.create_task(loop())
 

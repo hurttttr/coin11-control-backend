@@ -3,12 +3,13 @@
 """
 from fastapi import APIRouter
 
+from app.schemas.device import UpdateCheckResult, UpdatePullResult
 from app.services.version_manager import version_manager
 
 router = APIRouter(prefix="/update", tags=["update"])
 
 
-@router.get("/check")
+@router.get("/check", response_model=UpdateCheckResult)
 async def check_update():
     """检查原项目是否有远程更新"""
     result = await version_manager.check_update()
@@ -22,11 +23,10 @@ async def check_update():
     }
 
 
-@router.post("/pull")
+@router.post("/pull", response_model=UpdatePullResult)
 async def pull_update():
     """拉取原项目更新"""
-    result = await version_manager.pull_update()
-    return result
+    return await version_manager.pull_update()
 
 
 @router.get("/repo-status")

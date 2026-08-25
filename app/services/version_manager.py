@@ -1,17 +1,18 @@
 """
 版本管理服务
 负责 Git fetch/pull、更新检测、changelog
-使用 asyncio.to_thread + subprocess.run 避免事件循环阻塞
-（Windows Python 3.14+ 兼容方案）
+git 子进程逻辑统一走 app.services.git_ops（与 repo_manager 共享），
+避免两份几乎逐行相同的实现。
 """
 
-import asyncio
-import os
-import subprocess
+import logging
 from datetime import datetime
 from typing import Optional
 
 from app.core.config import get_settings
+from app.services import git_ops
+
+logger = logging.getLogger(__name__)
 
 
 class UpdateCheckResult:
@@ -38,83 +39,56 @@ class VersionManager:
     """版本管理服务 — Git 更新检测与拉取"""
 
     def __init__(self):
-        self.settings = get_settings()
-        self._repo_path = self.settings.coin11_tb_path_resolved
         self._last_check: Optional[UpdateCheckResult] = None
 
-    async def _run_git(self, *args, timeout: int = 30) -> tuple[str, str, int]:
-        """执行 git 命令，返回 (stdout, stderr, returncode)"""
-        cmd = ["git"] + list(args)
+    @property
+    def settings(self):
+        """每次访问都取当前配置单例（理由同 DeviceManager.settings）"""
+        return get_settings()
 
-        def _run():
-            try:
-                result = subprocess.run(
-                    cmd,
-                    cwd=self._repo_path,
-                    capture_output=True,
-                    timeout=timeout,
-                )
-                return (
-                    result.stdout.decode("utf-8", errors="replace").strip(),
-                    result.stderr.decode("utf-8", errors="replace").strip(),
-                    result.returncode,
-                )
-            except subprocess.TimeoutExpired:
-                return "", "timeout", -1
-
-        return await asyncio.to_thread(_run)
+    @property
+    def _repo_path(self) -> str:
+        """coin11-tb 仓库路径（延迟读取，随配置变化生效）"""
+        return self.settings.coin11_tb_path_resolved
 
     async def check_update(self) -> "UpdateCheckResult":
         """
         检查原项目是否有远程更新
-        1. git fetch origin main (后台)
-        2. git rev-parse HEAD (本地 commit)
-        3. git rev-parse origin/main (远程 commit)
-        4. git rev-list --count HEAD..origin/main (落后 commit 数)
-        5. git log --oneline HEAD..origin/main (commit 消息)
+        1. 探测远端默认分支（origin/HEAD，失败回退 main）
+        2. git fetch origin <branch>（允许失败，无网络时继续用本地信息）
+        3. git rev-parse HEAD / origin/<branch>
+        4. git rev-list --count（落后 commit 数）
+        5. git log --oneline（commit 消息）
         """
-        # 检查是否为 git 仓库
-        git_dir = os.path.join(self._repo_path, ".git")
-        if not os.path.isdir(git_dir):
+        if not git_ops.is_git_repo(self._repo_path):
             return UpdateCheckResult(
                 has_update=False,
                 checked_at=datetime.now().isoformat(),
             )
 
-        # 1. git fetch (不阻塞，允许失败)
-        _, stderr, rc = await self._run_git("fetch", "origin", "main", timeout=30)
-        if rc != 0:
-            pass  # fetch 可能失败（无网络等），继续获取本地信息
+        branch = await git_ops.detect_default_branch(self._repo_path)
 
-        # 2. 获取本地 HEAD
-        stdout_local, _, rc_local = await self._run_git("rev-parse", "HEAD")
-        current_commit = stdout_local if rc_local == 0 else ""
+        # fetch 可能失败（无网络等），不阻塞后续本地查询
+        await git_ops.fetch(self._repo_path, branch, timeout=30)
 
-        # 3. 获取远程 HEAD
-        stdout_remote, _, rc_remote = await self._run_git("rev-parse", "origin/main")
-        latest_commit = stdout_remote if rc_remote == 0 else current_commit
+        current_commit = await git_ops.get_head_commit(self._repo_path)
+        latest_commit = await git_ops.get_remote_commit(self._repo_path, branch) or current_commit
 
-        # 4. 计算落后 commit 数 + commit 消息
         commits_behind = 0
         commit_messages: list[str] = []
-        if rc_remote == 0 and current_commit and latest_commit:
-            stdout_count, _, rc_count = await self._run_git(
-                "rev-list", "--count", f"{current_commit}..origin/main"
+        if current_commit and latest_commit:
+            commits_behind = await git_ops.count_commits_behind(
+                self._repo_path, current_commit, branch
             )
-            if rc_count == 0 and stdout_count:
-                commits_behind = int(stdout_count)
-
             if commits_behind > 0:
-                stdout_log, _, rc_log = await self._run_git(
-                    "log", "--oneline", f"{current_commit}..origin/main"
+                commit_messages = await git_ops.list_commit_messages(
+                    self._repo_path, current_commit, branch
                 )
-                if rc_log == 0 and stdout_log:
-                    commit_messages = stdout_log.splitlines()
 
         result = UpdateCheckResult(
             has_update=commits_behind > 0,
             current_commit=current_commit,
-            latest_commit=latest_commit or current_commit,
+            latest_commit=latest_commit,
             commits_behind=commits_behind,
             commit_messages=commit_messages,
             checked_at=datetime.now().isoformat(),
@@ -125,17 +99,17 @@ class VersionManager:
     async def pull_update(self) -> dict:
         """
         拉取原项目更新
-        执行 git pull origin main
+        执行 git pull origin <branch>（分支名自动探测，不再硬编码 main）
         """
-        git_dir = os.path.join(self._repo_path, ".git")
-        if not os.path.isdir(git_dir):
+        if not git_ops.is_git_repo(self._repo_path):
             return {
                 "success": False,
                 "message": "不是 Git 仓库，无法拉取更新",
                 "pulled_commits": [],
             }
 
-        stdout, stderr, rc = await self._run_git("pull", "origin", "main", timeout=60)
+        branch = await git_ops.detect_default_branch(self._repo_path)
+        stdout, stderr, rc = await git_ops.pull(self._repo_path, branch, timeout=60)
         if rc != 0:
             return {
                 "success": False,
@@ -143,16 +117,10 @@ class VersionManager:
                 "pulled_commits": [],
             }
 
-        pulled_commits = []
-        for line in stdout.splitlines():
-            line = line.strip()
-            if line.startswith("commit ") or line.startswith("Updating "):
-                pulled_commits.append(line)
-
         return {
             "success": True,
             "message": stdout.strip() or "已更新到最新版本",
-            "pulled_commits": pulled_commits,
+            "pulled_commits": git_ops.parse_pulled_commits(stdout),
         }
 
 

@@ -1,3 +1,20 @@
+"""
+设备 / 任务 / 版本相关 Pydantic Schema。
+
+使用现状（2026-08，死代码清理 + Schema 收敛）：
+- 已作为 response_model 生效：
+    * UpdateCheckResult / UpdatePullResult → app/api/v1/update.py
+- 已作为请求体校验生效（api 层直接 import）：
+    * DeviceConnectRequest / DevicePairRequest / TaskCreateRequest /
+      QueueReorderRequest / BatchTaskCreateRequest / BatchDeviceRequest
+- 尚未挂 response_model（等 api 层收敛，见项目报告映射表；此处先保留）：
+    * DeviceInfo        → GET /api/devices、GET /api/devices/{serial}
+    * DeviceConnectResult → POST /api/devices/connect
+    * TaskInfo          → GET /api/devices/{device_id}/queue
+    * ScriptInfo        → GET /api/scripts
+    * HealthResponse    → GET /api/health
+"""
+
 from datetime import datetime
 from typing import Optional
 
@@ -71,10 +88,10 @@ class BatchDeviceRequest(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    """健康检查响应"""
+    """健康检查响应（字段与 app/main.py 的 health 端点实际返回保持一致）"""
     status: str = "ok"
     adb_available: bool = False
-    coin11_path_exists: bool = False
+    coin11_tb_ready: bool = False
 
 
 class ScriptInfo(BaseModel):
@@ -85,10 +102,17 @@ class ScriptInfo(BaseModel):
 
 
 class UpdateCheckResult(BaseModel):
-    """版本检测结果"""
+    """版本检测结果 (响应 schema)"""
     has_update: bool = False
     current_commit: str = ""
     latest_commit: str = ""
     commits_behind: int = 0
     commit_messages: list[str] = Field(default_factory=list)
     checked_at: datetime = Field(default_factory=datetime.now)
+
+
+class UpdatePullResult(BaseModel):
+    """拉取更新结果 (响应 schema)"""
+    success: bool
+    message: str = ""
+    pulled_commits: list[str] = Field(default_factory=list)
