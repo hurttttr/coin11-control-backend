@@ -31,7 +31,7 @@ pause >nul
 echo.
 echo Stopping services...
 
-REM °´¶Ë¿ÚÉ±½ø³Ì (findstr¹ýÂËºó forÖðÐÐÈ¡tokens=5¼´PID)
+REM æŒ‰ç«¯å£æ€è¿›ç¨‹ (findstrè¿‡æ»¤åŽ foré€è¡Œå–tokens=5å³PID)
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8000 "') do (
   if not "%%a"=="0" taskkill /f /t /pid %%a >nul 2>&1
 )

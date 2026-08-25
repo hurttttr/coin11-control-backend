@@ -17,7 +17,10 @@ GET /api/devices/{serial}/queue 观察结果。
 import json
 import os
 import shutil
+import sys
 import time
+
+import pytest
 
 # 必须在导入 app 模块之前执行: 把临时目录重定向到工作区内，
 # 保证 fake adb 与 launcher 临时脚本可写（沙箱可能禁止写系统 TEMP）。
@@ -64,9 +67,11 @@ def _setup_environment(tmp: str) -> dict:
         "ADB_PATH": fake_adb,
         "COIN11_TB_PATH": tb_dir,
         "AUTO_TASK_SETTINGS_FILE": settings_file,
+        "COIN11_STATE_FILE": os.path.join(tmp, "task_state.json"),
     }
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="假 ADB 使用 .cmd 可执行文件，仅 Windows")
 def test_headless_auto_task_trigger():
     # 本进程私有临时目录（同进程创建/删除，避免跨进程删除被沙箱拒绝）
     test_dir = os.path.join(_TMP, f"headless_{os.getpid()}")
