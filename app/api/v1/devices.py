@@ -9,11 +9,12 @@ from app.schemas.device import (
     DeviceConnectRequest,
     DevicePairRequest,
 )
+from app.services.auto_task_runner import run_auto_tasks
+from app.services.auto_task_settings import auto_task_settings
 from app.services.device_manager import device_manager
+from app.services.network_info import get_network_info
 from app.services.screen_capture import screen_capture
 from app.services.task_engine import task_engine
-from app.services.auto_task_settings import auto_task_settings
-from app.services.auto_task_runner import run_auto_tasks
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,16 @@ async def pair_device(req: DevicePairRequest):
     return await device_manager.pair_device(req.address, req.code)
 
 
+@router.get("/network-info")
+async def network_info():
+    """获取局域网网段与本机 IP，供前端自动预填配对/连接地址
+
+    自动探测失败或探测到非局域网网段时回退 LAN_SUBNET_OVERRIDE。
+    返回 {"subnet": "192.168.1", "host_ip": "192.168.1.10"}
+    """
+    return get_network_info()
+
+
 @router.delete("/{serial}")
 async def disconnect_device(serial: str):
     """断开设备连接"""
@@ -76,7 +87,7 @@ async def get_screenshot(serial: str):
         raise HTTPException(
             status_code=500,
             detail=f"截图失败: {str(e)}",
-        )
+        ) from None
 
 
 @router.get("/{serial}/queue")

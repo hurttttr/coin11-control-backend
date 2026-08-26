@@ -1,6 +1,6 @@
 [project]
 name = "coin11-control-backend"
-version = "0.3.0"
+version = "0.3.1"
 description = "Coin11-TB 网页控制平台后端 API"
 readme = "README.md"
 requires-python = ">=3.11"

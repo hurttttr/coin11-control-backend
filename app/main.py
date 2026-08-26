@@ -32,7 +32,7 @@ settings = get_settings()
 
 
 # 版本号：优先从已安装的包元数据读取（与 pyproject.toml 保持一致），读不到时回退常量
-_VERSION_FALLBACK = "0.3.0"
+_VERSION_FALLBACK = "0.3.1"
 
 
 def _resolve_version() -> str:

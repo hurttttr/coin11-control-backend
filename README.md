@@ -4,7 +4,7 @@
 
 **多设备安卓自动化任务控制平台**
 
-[![Version](https://img.shields.io/badge/版本-v0.3.0-00f0ff?style=flat-square)](https://github.com/hurttttr/coin11-control-backend/releases)
+[![Version](https://img.shields.io/badge/版本-v0.3.1-00f0ff?style=flat-square)](https://github.com/hurttttr/coin11-control-backend/releases)
 [![Python](https://img.shields.io/badge/Python-3.12+-3776AB?style=flat-square&logo=python&logoColor=white)]()
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi&logoColor=white)]()
 [![Vue 3](https://img.shields.io/badge/Frontend-Vue_3-4FC08D?style=flat-square&logo=vue.js&logoColor=white)]()
@@ -25,6 +25,8 @@
 **📱 设备管理**
 - 自动发现 USB / Wi-Fi 设备
 - ADB 无线调试配对（`adb pair`）
+- 网段自动预填（`GET /api/devices/network-info`）
+- 远程连接输入优化（IP 末段 + 端口，网段自动预填，端口默认 5555）
 - 远程连接 / 断开
 - 实时状态监视
 
@@ -159,9 +161,20 @@ docker build --build-arg WITH_SCRIPT_DEPS=0 -t coin11-control:slim .
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `GET` | `/api/devices` | 获取设备列表 |
+| `GET` | `/api/devices/network-info` | 获取局域网网段与本机 IP（`{"subnet":"192.168.1","host_ip":"192.168.1.10"}`） |
 | `POST` | `/api/devices/connect` | 远程连接（`{"address":"IP:Port"}`） |
 | `POST` | `/api/devices/pair` | ADB 无线配对（`{"address":"IP:Port","code":"123456"}`） |
 | `DELETE` | `/api/devices/{serial}` | 断开设备 |
+
+> **🔌 远程连接 / ADB 配对（Android 11+ 无线调试）**
+> 1. 前端通过 `GET /api/devices/network-info` 自动探测本机局域网网段（`{"subnet":"192.168.1","host_ip":"192.168.1.10"}`），
+>    探测不到局域网时可用 `LAN_SUBNET_OVERRIDE` 兜底，并在输入框中自动预填网段前缀。
+> 2. 远程连接：只需输入 IP 最后一段（如 `100`）与端口（默认 `5555`），前端拼成完整地址
+>    `IP:Port` 后调用 `POST /api/devices/connect`；直接粘贴完整地址同样兼容。
+> 3. ADB 配对：在配对弹窗输入 IP 最后一段（网段已预填）、配对端口与 6 位配对码，调用
+>    `POST /api/devices/pair` 完成 `adb pair`。
+> 4. **前提**：手机需开启「开发者选项 → 无线调试」，与电脑处于同一局域网；若需手机访问后端，
+>    `HOST` 需为 `0.0.0.0`（`/api/*` 建议同时设置 `API_AUTH_TOKEN`）。
 
 ### 任务队列
 
@@ -200,6 +213,19 @@ docker build --build-arg WITH_SCRIPT_DEPS=0 -t coin11-control:slim .
 ---
 
 ## 📦 版本发布说明
+
+### v0.3.1 (2026-08-26)
+
+> 🚀 远程连接/ADB 配对输入优化 + 死代码清理
+
+**✨ 新功能：**
+- 🌐 **网段自动预填** — 新增 `GET /api/devices/network-info`，自动探测本机局域网网段并预填到连接/配对输入框；`LAN_SUBNET_OVERRIDE` 可兜底多网卡/探测失败场景
+- 🔌 **远程连接输入优化** — 只需输入 IP 最后一段 + 端口（默认 `5555`），前端自动拼成完整地址；直接粘贴完整 `IP:Port` 同样兼容
+- 📟 **ADB 配对弹窗优化** — 输入项改为主机末段（网段已预填）+ 配对端口 + 6 位配对码；表单缺字段时红字提示具体原因
+
+**🧹 精简与清理：**
+- ♻️ 移除手机扫码二维码配对（前端入口已移除，后端 `pair-qr` API 一并删除，`qrcode` 依赖移除）
+- 🗑️ 删除死代码 `state_store.py` 及其测试（生产零引用）
 
 ### v0.3.0 (2026-08-25)
 
@@ -326,17 +352,20 @@ coin11-control-backend/
 复制 `.env.example` 为 `.env` 后按需修改：
 
 ```ini
-HOST=127.0.0.1
+HOST=0.0.0.0
 PORT=8000
 ADB_PATH=adb
 CORS_ORIGINS=["http://localhost:5173","http://127.0.0.1:5173"]
 COIN11_TB_REPO_URL=https://github.com/czl0325/coin11-tb.git
 
+# 局域网网段覆盖值（可选）：自动探测失败或探测到非局域网网段时回退
+# LAN_SUBNET_OVERRIDE=192.168.1
+
 # WebSocket 鉴权令牌 —— ⚠️ 见下方警告，勿随意修改
 WS_AUTH_TOKEN=coin11-control-token
 
 # API 鉴权令牌（可选）：留空则 /api 完全开放（本地单用户场景）
-# 设置后所有 /api/* 需携带 Authorization: Bearer <token> 或 X-API-Token
+# 设置后所有 /api/* 需携带 Authorization: Bearer *** 或 X-API-Token
 # /api/health 始终豁免，供健康检查使用
 API_AUTH_TOKEN=
 

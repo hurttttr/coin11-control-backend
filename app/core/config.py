@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     # 服务监听端口
     PORT: int = 8000
 
+    # 局域网网段覆盖值（可选）。手机扫码配对需后端 0.0.0.0 监听且手机与电脑同网；
+    # GET /api/devices/network-info 自动探测失败或探测到非局域网网段时回退到此值。
+    LAN_SUBNET_OVERRIDE: str = ""
+
     # CORS 允许的来源（JSON 数组字符串；pydantic-settings 对 list[str] 自动做 JSON 解析）
     CORS_ORIGINS: list[str] = [
         "http://localhost:5173",
